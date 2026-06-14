@@ -6,7 +6,7 @@ export const config = {
   defaultPlanTopic: 'planes',
   envKeys: {
     openrouter: 'OPENROUTER_API_KEY',
-    gemini: 'GEMINI_API_KEY',
+    openai: 'OPENAI_API_KEY',
     kommo: 'KOMMO_TOKEN',
     workerUrl: 'WORKER_URL',
   },
