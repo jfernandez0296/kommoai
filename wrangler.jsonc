@@ -1,0 +1,11 @@
+{
+	"name": "kommo-ai",
+	"main": "src/index.js",
+	"compatibility_date": "2026-03-10",
+	"vars": {
+		"WORKER_URL": "https://kommo-ai.jfernandezc.workers.dev"
+	},
+	"observability": {
+		"enabled": true
+	}
+}
