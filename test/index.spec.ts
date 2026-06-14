@@ -24,13 +24,13 @@ describe("Worker chatbot endpoint", () => {
 
 	it("reports missing Gemini secret configuration clearly", async () => {
 		await expect(askGemini("hola", {} as any)).rejects.toThrow(
-			/Falta configurar el Secret GEMINI_API_KEY/i,
+			/Falta configurar GEMINI_API_KEY/i,
 		);
 	});
 
 	it("reports missing OpenRouter secret configuration clearly", async () => {
 		await expect(askOpenRouter("hola", {} as any)).rejects.toThrow(
-			/Falta configurar el Secret OPENROUTER_API_KEY/i,
+			/Falta configurar OPENROUTER_API_KEY/i,
 		);
 	});
 
