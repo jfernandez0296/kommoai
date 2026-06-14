@@ -131,10 +131,11 @@ describe("Worker chatbot endpoint", () => {
 		await waitOnExecutionContext(ctx);
 
 		expect(await response.json()).toMatchObject({
-			reply: "Te comparto la imagen del plan.",
+			reply: "Te comparto la imagen de nuestros planes.",
 			handoff: false,
 			imageUrl:
 				"https://pub-bc555ff3adc049a0afda1bac19d846ea.r2.dev/Gemini_Generated_Image_5u2ryk5u2ryk5u2r%20(1).png",
+			provider: "system"
 		});
 	});
 

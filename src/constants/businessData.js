@@ -8,3 +8,10 @@ export const BUSINESS_DATA = {
   plansImageUrl:
     'https://pub-bc555ff3adc049a0afda1bac19d846ea.r2.dev/Gemini_Generated_Image_5u2ryk5u2ryk5u2r%20(1).png',
 };
+
+export const BUSINESS = {
+  images: {
+    planGeneral:
+      "https://pub-bc555ff3adc049a0afda1bac19d846ea.r2.dev/Gemini_Generated_Image_5u2ryk5u2ryk5u2r%20(1).png"
+  }
+};

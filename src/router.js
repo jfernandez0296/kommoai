@@ -1,4 +1,4 @@
-import { BUSINESS_DATA } from './constants/businessData.js';
+import { BUSINESS_DATA, BUSINESS } from './constants/businessData.js';
 import { chatWithFallback } from './ai/aiProvider.js';
 
 export function routeRequest(pathname, request = {}) {
@@ -23,14 +23,22 @@ export function routeRequest(pathname, request = {}) {
 }
 
 export async function processUserMessage(message, env) {
-  const text = String(message || '').trim();
+  const text = String(message || '').trim().toLowerCase();
 
   // Si el usuario pide una imagen, devolvemos la respuesta visual sin llamar a la IA.
-  if (/imagen/i.test(text)) {
+  if (
+    text.includes("plan") ||
+    text.includes("imagen") ||
+    text.includes("foto") ||
+    text.includes("catálogo") ||
+    text.includes("muestrame") ||
+    text.includes("muéstrame")
+  ) {
     return {
-      reply: 'Te comparto la imagen del plan.',
+      reply: "Te comparto la imagen de nuestros planes.",
       handoff: false,
-      imageUrl: BUSINESS_DATA.plansImageUrl,
+      imageUrl: BUSINESS.images.planGeneral,
+      provider: "system"
     };
   }
 
