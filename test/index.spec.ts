@@ -6,7 +6,7 @@ import {
 } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import { askGemini } from "../src/ai/gemini.js";
+import { askOpenAI } from "../src/ai/openai.js";
 import { askOpenRouter } from "../src/ai/openrouter.js";
 
 const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
@@ -22,9 +22,9 @@ describe("Worker chatbot endpoint", () => {
 		globalThis.fetch = originalFetch;
 	});
 
-	it("reports missing Gemini secret configuration clearly", async () => {
-		await expect(askGemini("hola", {} as any)).rejects.toThrow(
-			/Falta configurar GEMINI_API_KEY/i,
+	it("reports missing OpenAI secret configuration clearly", async () => {
+		await expect(askOpenAI("hola", {} as any)).rejects.toThrow(
+			/Falta configurar OPENAI_API_KEY/i,
 		);
 	});
 
@@ -44,11 +44,11 @@ describe("Worker chatbot endpoint", () => {
 		expect(await response.json()).toMatchObject({ error: "Only POST /chat is supported" });
 	});
 
-	it("returns a chatbot response from Gemini for valid JSON POST requests", async () => {
+	it("returns a chatbot response from OpenAI for valid JSON POST requests", async () => {
 		globalThis.fetch = vi.fn().mockResolvedValue({
 			ok: true,
 			json: async () => ({
-				candidates: [{ content: { parts: [{ text: "Respuesta de Gemini" }] } }],
+				choices: [{ message: { content: "Respuesta de OpenAI" } }],
 			}),
 		}) as unknown as typeof fetch;
 
@@ -60,26 +60,26 @@ describe("Worker chatbot endpoint", () => {
 		const ctx = createExecutionContext();
 		const response = await worker.fetch(
 			request,
-			{ ...env, GEMINI_API_KEY: "gemini-key" },
+			{ ...env, OPENAI_API_KEY: "openai-key" },
 			ctx,
 		);
 		await waitOnExecutionContext(ctx);
 
 		expect(await response.json()).toMatchObject({
-			reply: "Respuesta de Gemini",
+			reply: "Respuesta de OpenAI",
 			handoff: false,
 			imageUrl: null,
-			provider: "gemini",
+			provider: "openai",
 		});
 	});
 
-	it("falls back to OpenRouter when Gemini fails", async () => {
+	it("falls back to OpenRouter when OpenAI fails", async () => {
 		globalThis.fetch = vi
 			.fn()
 			.mockResolvedValueOnce({
 				ok: false,
 				status: 500,
-				text: async () => "Gemini failed",
+				text: async () => "OpenAI failed",
 			})
 			.mockResolvedValueOnce({
 				ok: true,
@@ -96,7 +96,7 @@ describe("Worker chatbot endpoint", () => {
 		const ctx = createExecutionContext();
 		const response = await worker.fetch(
 			request,
-			{ ...env, GEMINI_API_KEY: "gemini-key", OPENROUTER_API_KEY: "openrouter-key" },
+			{ ...env, OPENAI_API_KEY: "openai-key", OPENROUTER_API_KEY: "openrouter-key" },
 			ctx,
 		);
 		await waitOnExecutionContext(ctx);
@@ -113,7 +113,7 @@ describe("Worker chatbot endpoint", () => {
 		globalThis.fetch = vi.fn().mockResolvedValue({
 			ok: true,
 			json: async () => ({
-				candidates: [{ content: { parts: [{ text: "Respuesta de Gemini" }] } }],
+				choices: [{ message: { content: "Respuesta de OpenAI" } }],
 			}),
 		}) as unknown as typeof fetch;
 
@@ -125,7 +125,7 @@ describe("Worker chatbot endpoint", () => {
 		const ctx = createExecutionContext();
 		const response = await worker.fetch(
 			request,
-			{ ...env, GEMINI_API_KEY: "gemini-key" },
+			{ ...env, OPENAI_API_KEY: "openai-key" },
 			ctx,
 		);
 		await waitOnExecutionContext(ctx);
@@ -138,7 +138,7 @@ describe("Worker chatbot endpoint", () => {
 		});
 	});
 
-	it("uses OpenRouter when Gemini is not configured", async () => {
+	it("uses OpenRouter when OpenAI is not configured", async () => {
 		globalThis.fetch = vi.fn().mockResolvedValue({
 			ok: true,
 			json: async () => ({
