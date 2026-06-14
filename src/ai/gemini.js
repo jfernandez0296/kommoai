@@ -1,9 +1,9 @@
 export async function askGemini(prompt, env) {
   const hasGeminiKey = Boolean(env?.GEMINI_API_KEY);
-  console.log('[env] GEMINI_API_KEY:', hasGeminiKey ? 'configurada' : 'no configurada');
+  console.log(`GEMINI_API_KEY presente: ${hasGeminiKey}`);
 
   if (!hasGeminiKey) {
-    throw new Error('Falta configurar el Secret GEMINI_API_KEY en Wrangler o en .dev.vars.');
+    throw new Error('Falta configurar GEMINI_API_KEY');
   }
 
   const model = env?.GEMINI_MODEL ?? 'gemini-2.0-flash-exp';

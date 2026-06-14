@@ -1,9 +1,9 @@
 export async function askOpenRouter(prompt, env) {
   const hasOpenRouterKey = Boolean(env?.OPENROUTER_API_KEY);
-  console.log('[env] OPENROUTER_API_KEY:', hasOpenRouterKey ? 'configurada' : 'no configurada');
+  console.log(`OPENROUTER_API_KEY presente: ${hasOpenRouterKey}`);
 
   if (!hasOpenRouterKey) {
-    throw new Error('Falta configurar el Secret OPENROUTER_API_KEY en Wrangler o en .dev.vars.');
+    throw new Error('Falta configurar OPENROUTER_API_KEY');
   }
 
   const model = env?.OPENROUTER_MODEL ?? 'openai/gpt-4o-mini';
