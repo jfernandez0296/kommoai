@@ -1,6 +1,28 @@
 import { BUSINESS_DATA, BUSINESS } from './constants/businessData.js';
 import { chatWithFallback } from './ai/aiProvider.js';
 
+export function shouldHandoff(text) {
+  const keywords = [
+    'asesor',
+    'humano',
+    'persona',
+    'agente',
+    'llamar',
+    'contactar',
+    'quiero comprar',
+    'quiero contratar',
+    'hablar con alguien',
+  ];
+
+  const matched = keywords.some((kw) => text.includes(kw));
+
+  if (matched) {
+    return { handoff: true, reason: 'intent_handoff' };
+  }
+
+  return { handoff: false, reason: null };
+}
+
 export function routeRequest(pathname, request = {}) {
   const contentType = request?.headers?.get?.('content-type') || '';
 
@@ -24,6 +46,17 @@ export function routeRequest(pathname, request = {}) {
 
 export async function processUserMessage(message, env) {
   const text = String(message || '').trim().toLowerCase();
+
+  // 1. Verificamos intención de derivación (Reglas estrictas)
+  const handoffCheck = shouldHandoff(text);
+  if (handoffCheck.handoff) {
+    return {
+      reply: 'Perfecto, te voy a derivar con un asesor para ayudarte.',
+      handoff: true,
+      imageUrl: null,
+      provider: 'system',
+    };
+  }
 
   // Si el usuario pide una imagen, devolvemos la respuesta visual sin llamar a la IA.
   if (
