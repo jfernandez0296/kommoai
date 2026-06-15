@@ -109,6 +109,24 @@ describe("Worker chatbot endpoint", () => {
 		});
 	});
 
+	it("returns a system handoff response when keywords are detected", async () => {
+		const request = new IncomingRequest("http://example.com/chat", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ message: "quiero hablar con un asesor" }),
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(await response.json()).toMatchObject({
+			reply: "Perfecto, te voy a derivar con un asesor para ayudarte.",
+			handoff: true,
+			imageUrl: null,
+			provider: "system",
+		});
+	});
+
 	it("returns the image plan reply when the user asks for an image", async () => {
 		globalThis.fetch = vi.fn().mockResolvedValue({
 			ok: true,
