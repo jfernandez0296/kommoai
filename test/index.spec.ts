@@ -120,7 +120,7 @@ describe("Worker chatbot endpoint", () => {
 		await waitOnExecutionContext(ctx);
 
 		expect(await response.json()).toMatchObject({
-			reply: "Perfecto, te voy a derivar con un asesor para ayudarte.",
+			reply: "Entendido. Te estoy conectando con un asesor humano para brindarte una atención personalizada. Por favor, aguarda un momento.",
 			handoff: true,
 			imageUrl: null,
 			provider: "system",
