@@ -3,6 +3,17 @@ export function normalizeText(value) {
 }
 
 /**
+ * Sanitiza la entrada del usuario eliminando etiquetas HTML y limitando la longitud.
+ */
+export function sanitizeInput(text, maxLength = 1000) {
+  if (!text) return '';
+  // Eliminar etiquetas HTML
+  const sanitized = String(text).replace(/<[^>]*>?/gm, '');
+  // Limitar longitud
+  return sanitized.substring(0, maxLength);
+}
+
+/**
  * Elimina acentos y diacríticos de un texto.
  */
 export function removeAccents(str) {
