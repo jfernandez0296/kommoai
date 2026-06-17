@@ -121,22 +121,27 @@ export async function sendKommoReply(message, conversationId, env) {
   const stringToSign = [method, contentMD5, contentType, date, path].join('\n');
   const signature = await getHMACSHA1(secret, stringToSign);
 
-  const response = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': contentType,
-      Date: date,
-      'Content-MD5': contentMD5,
-      'X-Signature': signature,
-    },
-    body: bodyStr,
-  });
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': contentType,
+        Date: date,
+        'Content-MD5': contentMD5,
+        'X-Signature': signature,
+      },
+      body: bodyStr,
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[kommo] Error al enviar mensaje (${response.status}):`, errorText);
-    return { ok: false, status: response.status, details: errorText };
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[kommo] Error al enviar mensaje (${response.status}):`, errorText);
+      return { ok: false, status: response.status, details: errorText };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error('[kommo] Fallo crítico de red al enviar mensaje:', error);
+    return { ok: false, error: String(error) };
   }
-
-  return { ok: true };
 }
