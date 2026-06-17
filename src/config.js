@@ -8,6 +8,9 @@ export const config = {
     openrouter: 'OPENROUTER_API_KEY',
     openai: 'OPENAI_API_KEY',
     kommo: 'KOMMO_TOKEN',
+    kommoSecret: 'KOMMO_SECRET',
+    kommoDomain: 'KOMMO_DOMAIN',
+    kommoScopeId: 'KOMMO_SCOPE_ID',
     workerUrl: 'WORKER_URL',
   },
 };

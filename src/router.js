@@ -1,7 +1,11 @@
 import { BUSINESS_DATA, BUSINESS } from './constants/businessData.js';
 import { chatWithFallback } from './ai/aiProvider.js';
+import { removeAccents } from './utils/helpers.js';
 
 export function shouldHandoff(text) {
+  // Normalizamos el texto: minúsculas y sin acentos.
+  const normalized = removeAccents(text.toLowerCase());
+
   const keywords = [
     'asesor',
     'humano',
@@ -9,12 +13,21 @@ export function shouldHandoff(text) {
     'agente',
     'llamar',
     'contactar',
-    'quiero comprar',
-    'quiero contratar',
+    'comprar',
+    'contratar',
     'hablar con alguien',
+    'ayuda',
+    'soporte',
+    'asistencia',
+    'reclamacion',
+    'queja',
+    'costo',
+    'precio',
+    'cuanto cuesta',
+    'informacion',
   ];
 
-  const matched = keywords.some((kw) => text.includes(kw));
+  const matched = keywords.some((kw) => normalized.includes(removeAccents(kw)));
 
   if (matched) {
     return { handoff: true, reason: 'intent_handoff' };
@@ -44,14 +57,14 @@ export function routeRequest(pathname, request = {}) {
   return { handler: 'default', reason: 'Fallback response' };
 }
 
-export async function processUserMessage(message, env) {
-  const text = String(message || '').trim().toLowerCase();
+export async function processUserMessage(message, env, ctx) {
+  const text = String(message || '').trim();
 
   // 1. Verificamos intención de derivación (Reglas estrictas)
   const handoffCheck = shouldHandoff(text);
   if (handoffCheck.handoff) {
     return {
-      reply: 'Perfecto, te voy a derivar con un asesor para ayudarte.',
+      reply: 'Entendido. Te estoy conectando con un asesor humano para brindarte una atención personalizada. Por favor, aguarda un momento.',
       handoff: true,
       imageUrl: null,
       provider: 'system',
@@ -59,13 +72,14 @@ export async function processUserMessage(message, env) {
   }
 
   // Si el usuario pide una imagen, devolvemos la respuesta visual sin llamar a la IA.
+  const lowerText = text.toLowerCase();
   if (
-    text.includes("plan") ||
-    text.includes("imagen") ||
-    text.includes("foto") ||
-    text.includes("catálogo") ||
-    text.includes("muestrame") ||
-    text.includes("muéstrame")
+    lowerText.includes("plan") ||
+    lowerText.includes("imagen") ||
+    lowerText.includes("foto") ||
+    lowerText.includes("catálogo") ||
+    lowerText.includes("muestrame") ||
+    lowerText.includes("muéstrame")
   ) {
     return {
       reply: "Te comparto la imagen de nuestros planes.",
