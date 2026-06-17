@@ -34,8 +34,8 @@ describe("Worker chatbot endpoint", () => {
 		);
 	});
 
-	it("returns Kommo credential status when ?debug is present", async () => {
-		const request = new IncomingRequest("http://example.com/chat?debug", {
+	it("returns Kommo credential status when /debug is accessed", async () => {
+		const request = new IncomingRequest("http://example.com/debug", {
 			method: "GET"
 		});
 		const ctx = createExecutionContext();

@@ -5,8 +5,10 @@ import { sendKommoReply } from './services/kommo.js';
 
 export default {
   async fetch(request, env, ctx) {
-    // TEMPORAL: Prueba de credenciales
-    if (new URL(request.url).searchParams.has('debug')) {
+    const url = new URL(request.url);
+
+    // 0) Endpoint de depuración (GET /debug)
+    if (request.method === 'GET' && url.pathname === '/debug') {
       return Response.json({
         kommo: {
           subdomain: env.KOMMO_SUBDOMAIN,
@@ -29,7 +31,6 @@ export default {
     }
 
     // 1) Validamos la ruta y el método para que el worker sea un endpoint de chatbot real.
-    const url = new URL(request.url);
     const route = routeRequest(url.pathname, request);
 
     if (request.method !== 'POST' || route.handler !== 'chat') {
