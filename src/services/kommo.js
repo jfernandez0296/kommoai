@@ -78,18 +78,20 @@ async function getHMACSHA1(key, message) {
  * Envía una respuesta a Kommo a través de su API de Canales Propios (Custom Channels).
  */
 export async function sendKommoReply(message, conversationId, env) {
-  const { KOMMO_SECRET, KOMMO_DOMAIN, KOMMO_SCOPE_ID } = env;
+  const secret = env.KOMMO_CLIENT_SECRET;
+  const subdomain = env.KOMMO_SUBDOMAIN;
+  const integrationId = env.KOMMO_INTEGRATION_ID;
 
-  console.log(`KOMMO_SECRET presente: ${Boolean(KOMMO_SECRET)}`);
-  console.log(`KOMMO_DOMAIN presente: ${Boolean(KOMMO_DOMAIN)}`);
-  console.log(`KOMMO_SCOPE_ID presente: ${Boolean(KOMMO_SCOPE_ID)}`);
+  console.log(`KOMMO_CLIENT_SECRET presente: ${Boolean(secret)}`);
+  console.log(`KOMMO_SUBDOMAIN presente: ${Boolean(subdomain)}`);
+  console.log(`KOMMO_INTEGRATION_ID presente: ${Boolean(integrationId)}`);
 
-  if (!KOMMO_SECRET || !KOMMO_DOMAIN || !KOMMO_SCOPE_ID) {
+  if (!secret || !subdomain || !integrationId) {
     console.warn('[kommo] Faltan variables de entorno para Kommo. Saltando envío.');
     return { ok: false, error: 'Configuración incompleta' };
   }
 
-  const url = `https://${KOMMO_DOMAIN}.kommo.com/v2/origin/custom/${KOMMO_SCOPE_ID}`;
+  const url = `https://${subdomain}.kommo.com/v2/origin/custom/${integrationId}`;
   const method = 'POST';
   const contentType = 'application/json';
   const date = new Date().toUTCString().replace('GMT', '+0000'); // Formato RFC2822
@@ -115,9 +117,9 @@ export async function sendKommoReply(message, conversationId, env) {
   const contentMD5 = getMD5(bodyStr);
 
   // El path para la firma debe ser relativo: /v2/origin/custom/{scope_id}
-  const path = `/v2/origin/custom/${KOMMO_SCOPE_ID}`;
+  const path = `/v2/origin/custom/${integrationId}`;
   const stringToSign = [method, contentMD5, contentType, date, path].join('\n');
-  const signature = await getHMACSHA1(KOMMO_SECRET, stringToSign);
+  const signature = await getHMACSHA1(secret, stringToSign);
 
   const response = await fetch(url, {
     method,
