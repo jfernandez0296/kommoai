@@ -19,6 +19,41 @@ export default {
       });
     }
 
+    // 0.1) Prueba de conexión a Kommo (GET /kommo-test)
+    if (request.method === 'GET' && url.pathname === '/kommo-test') {
+      const subdomain = env.KOMMO_SUBDOMAIN;
+      const token = env.KOMMO_ACCESS_TOKEN;
+
+      try {
+        const response = await fetch(`https://${subdomain}/api/v4/account`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          const responseText = await response.text();
+          return Response.json({
+            success: false,
+            status: response.status,
+            error: responseText
+          });
+        }
+
+        const data = await response.json();
+        return Response.json({
+          success: true,
+          account: data
+        });
+      } catch (error) {
+        return Response.json({
+          success: false,
+          error: String(error)
+        }, { status: 500 });
+      }
+    }
+
     // Manejo de CORS
     const corsHeaders = {
       'Access-Control-Allow-Origin': '*',

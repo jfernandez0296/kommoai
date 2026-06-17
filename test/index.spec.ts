@@ -50,6 +50,50 @@ describe("Worker chatbot endpoint", () => {
 		expect(data.kommo).toHaveProperty("hasSecret");
 	});
 
+	it("returns success on /kommo-test when Kommo API responds ok", async () => {
+		globalThis.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({ id: 123, name: "Test Account" }),
+		}) as unknown as typeof fetch;
+
+		const request = new IncomingRequest("http://example.com/kommo-test", {
+			method: "GET"
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, { ...env, KOMMO_SUBDOMAIN: "test.kommo.com", KOMMO_ACCESS_TOKEN: "token" }, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(200);
+		const data = await response.json();
+		expect(data).toMatchObject({
+			success: true,
+			account: { id: 123, name: "Test Account" }
+		});
+	});
+
+	it("returns error on /kommo-test when Kommo API fails", async () => {
+		globalThis.fetch = vi.fn().mockResolvedValue({
+			ok: false,
+			status: 401,
+			text: async () => "Unauthorized",
+		}) as unknown as typeof fetch;
+
+		const request = new IncomingRequest("http://example.com/kommo-test", {
+			method: "GET"
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, { ...env, KOMMO_SUBDOMAIN: "test.kommo.com", KOMMO_ACCESS_TOKEN: "token" }, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(200);
+		const data = await response.json();
+		expect(data).toMatchObject({
+			success: false,
+			status: 401,
+			error: "Unauthorized"
+		});
+	});
+
 	it("rejects non-POST requests to the chat endpoint", async () => {
 		const request = new IncomingRequest("http://example.com/chat");
 		const ctx = createExecutionContext();
