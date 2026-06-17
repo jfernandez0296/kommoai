@@ -1,6 +1,7 @@
 import { routeRequest, processUserMessage } from './router.js';
 import { saveConversationTurn } from './memory/conversationMemory.js';
 import { normalizeText, sanitizeInput } from './utils/helpers.js';
+import { sendKommoReply } from './services/kommo.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -26,7 +27,12 @@ export default {
     try {
       // 2) Leemos el cuerpo JSON enviado por el cliente.
       const body = await request.json().catch(() => ({}));
-      const rawMessage = normalizeText(body?.message ?? '');
+
+      // Extraemos el mensaje y el conversation_id (si viene de un webhook de Kommo)
+      // Kommo suele enviar: payload.message.text y payload.conversation_id
+      const rawMessage = normalizeText(body?.message?.text ?? body?.message ?? '');
+      const conversationId = body?.conversation_id ?? body?.payload?.conversation_id;
+
       const message = sanitizeInput(rawMessage);
 
       if (!message) {
@@ -38,6 +44,11 @@ export default {
 
       // 4) Guardamos el turno en memoria para trazabilidad.
       saveConversationTurn(message, result.reply, { route: route.reason, handoff: result.handoff });
+
+      // 5) Si tenemos conversationId, enviamos la respuesta de vuelta a Kommo de forma asíncrona.
+      if (conversationId) {
+        ctx.waitUntil(sendKommoReply(result.reply, conversationId, env));
+      }
 
       return Response.json(result, { status: 200, headers: corsHeaders });
     } catch (error) {
