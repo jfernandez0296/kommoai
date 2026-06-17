@@ -36,7 +36,7 @@ export default {
       const message = sanitizeInput(rawMessage);
 
       if (!message) {
-        return Response.json({ error: 'Missing message in JSON body' }, { status: 400 });
+        return Response.json({ error: 'Missing message in JSON body' }, { status: 400, headers: corsHeaders });
       }
 
       // 3) Procesamos el mensaje con el router y el proveedor IA.

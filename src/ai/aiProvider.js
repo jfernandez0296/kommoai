@@ -14,10 +14,9 @@ export async function chatWithFallback(prompt, env) {
       return { reply, handoff: true, imageUrl: null, provider: 'openrouter' };
     } catch (openRouterError) {
       // 3) Si todos fallan, devolvemos un error claro.
-      throw {
-        error: 'All providers failed',
-        details: [String(openAIError), String(openRouterError)],
-      };
+      const error = new Error('All providers failed');
+      error.details = [String(openAIError), String(openRouterError)];
+      throw error;
     }
   }
 }

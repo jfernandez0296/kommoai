@@ -57,7 +57,7 @@ export function routeRequest(pathname, request = {}) {
   return { handler: 'default', reason: 'Fallback response' };
 }
 
-export async function processUserMessage(message, env) {
+export async function processUserMessage(message, env, ctx) {
   const text = String(message || '').trim();
 
   // 1. Verificamos intención de derivación (Reglas estrictas)

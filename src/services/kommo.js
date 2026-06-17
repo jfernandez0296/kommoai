@@ -1,11 +1,56 @@
 /**
- * Genera el hash MD5 de un texto en minúsculas (requerido por Kommo).
+ * Implementación de MD5 en JavaScript puro (requerido porque crypto.subtle.digest('MD5') no está disponible en Cloudflare Workers).
+ * Basado en: https://gist.github.com/jbt/2401340
  */
-async function getMD5(text) {
-  const msgUint8 = new TextEncoder().encode(text);
-  const hashBuffer = await crypto.subtle.digest('MD5', msgUint8);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+function getMD5(text) {
+  var k = [], i = 0;
+  for (; i < 64;) k[i] = 0 | Math.abs(Math.sin(++i)) * 4294967296;
+
+  var b, c, d, j,
+    x = [],
+    str = unescape(encodeURIComponent(text)),
+    n = str.length,
+    h = [b = 0x67452301, c = 0xefcdab89, ~b, ~c],
+    words = [];
+
+  for (i = 0; i <= n; i++) words[i >> 2] |= (str.charCodeAt(i) || 128) << ((i % 4) << 3);
+  words[(((n + 8) >> 6) << 4) + 14] = n * 8;
+
+  for (i = 0; i < words.length; i += 16) {
+    var a = h;
+    for (j = 0; j < 64; j++) {
+      a = [
+        d = a[3],
+        (b = a[1] | 0) + (
+          (d = a[0] + [
+            b & (c = a[2]) | ~b & d,
+            d & b | ~d & c,
+            b ^ c ^ d,
+            c ^ (b | ~d)
+          ][j >> 4] + k[j] + (words[i + [
+            j,
+            5 * j + 1,
+            3 * j + 5,
+            7 * j
+          ][j >> 4] & 15] | 0)) << (j = [
+            7, 12, 17, 22,
+            5, 9, 14, 20,
+            4, 11, 16, 23,
+            6, 10, 15, 21
+          ][4 * (j >> 4) + (j & 3)]) | d >>> (32 - j)),
+        b,
+        c
+      ];
+    }
+    for (j = 0; j < 4; j++) h[j] = h[j] + a[j];
+  }
+
+  for (i = 0; i < 4; i++) {
+    for (j = 0; j < 4; j++) {
+      x.push((h[i] >> (j * 8)) & 255);
+    }
+  }
+  return x.map(function (b) { return ("00" + b.toString(16)).slice(-2); }).join("");
 }
 
 /**
@@ -63,7 +108,7 @@ export async function sendKommoReply(message, conversationId, env) {
   };
 
   const bodyStr = JSON.stringify(bodyObj);
-  const contentMD5 = await getMD5(bodyStr);
+  const contentMD5 = getMD5(bodyStr);
 
   // El path para la firma debe ser relativo: /v2/origin/custom/{scope_id}
   const path = `/v2/origin/custom/${KOMMO_SCOPE_ID}`;
