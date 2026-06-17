@@ -80,6 +80,10 @@ async function getHMACSHA1(key, message) {
 export async function sendKommoReply(message, conversationId, env) {
   const { KOMMO_SECRET, KOMMO_DOMAIN, KOMMO_SCOPE_ID } = env;
 
+  console.log(`KOMMO_SECRET presente: ${Boolean(KOMMO_SECRET)}`);
+  console.log(`KOMMO_DOMAIN presente: ${Boolean(KOMMO_DOMAIN)}`);
+  console.log(`KOMMO_SCOPE_ID presente: ${Boolean(KOMMO_SCOPE_ID)}`);
+
   if (!KOMMO_SECRET || !KOMMO_DOMAIN || !KOMMO_SCOPE_ID) {
     console.warn('[kommo] Faltan variables de entorno para Kommo. Saltando envío.');
     return { ok: false, error: 'Configuración incompleta' };
