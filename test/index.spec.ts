@@ -34,28 +34,8 @@ describe("Worker chatbot endpoint", () => {
 		);
 	});
 
-	it("returns debug information for any request", async () => {
-		const request = new IncomingRequest("http://example.com/chat", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ message: "hola" }),
-		});
-		const ctx = createExecutionContext();
-		const response = await worker.fetch(request, env, ctx);
-		await waitOnExecutionContext(ctx);
-
-		expect(response.status).toBe(200);
-		const data = await response.json();
-		expect(data).toMatchObject({
-			success: true,
-			method: "POST",
-			url: "http://example.com/chat"
-		});
-		expect(data.timestamp).toBeDefined();
-	});
-
-	it("returns debug information for GET request", async () => {
-		const request = new IncomingRequest("http://example.com/test", {
+	it("returns Kommo credential status when ?debug is present", async () => {
+		const request = new IncomingRequest("http://example.com/chat?debug", {
 			method: "GET"
 		});
 		const ctx = createExecutionContext();
@@ -64,10 +44,161 @@ describe("Worker chatbot endpoint", () => {
 
 		expect(response.status).toBe(200);
 		const data = await response.json();
-		expect(data).toMatchObject({
-			success: true,
-			method: "GET",
-			url: "http://example.com/test"
+		expect(data).toHaveProperty("kommo");
+		expect(data.kommo).toHaveProperty("hasToken");
+		expect(data.kommo).toHaveProperty("hasIntegrationId");
+		expect(data.kommo).toHaveProperty("hasSecret");
+	});
+
+	it("rejects non-POST requests to the chat endpoint", async () => {
+		const request = new IncomingRequest("http://example.com/chat");
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(405);
+		expect(await response.json()).toMatchObject({ error: "Only POST /chat is supported" });
+	});
+
+	it("returns a chatbot response from OpenAI for valid JSON POST requests", async () => {
+		globalThis.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				choices: [{ message: { content: "Respuesta de OpenAI" } }],
+			}),
+		}) as unknown as typeof fetch;
+
+		const request = new IncomingRequest("http://example.com/chat", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ message: "hola" }),
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(
+			request,
+			{ ...env, OPENAI_API_KEY: "openai-key" },
+			ctx,
+		);
+		await waitOnExecutionContext(ctx);
+
+		expect(await response.json()).toMatchObject({
+			reply: "Respuesta de OpenAI",
+			handoff: false,
+			imageUrl: null,
+			provider: "openai",
+		});
+	});
+
+	it("falls back to OpenRouter when OpenAI fails", async () => {
+		globalThis.fetch = vi
+			.fn()
+			.mockResolvedValueOnce({
+				ok: false,
+				status: 500,
+				text: async () => "OpenAI failed",
+			})
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					choices: [{ message: { content: "Respuesta de OpenRouter" } }],
+				}),
+			}) as unknown as typeof fetch;
+
+		const request = new IncomingRequest("http://example.com/chat", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ message: "hola" }),
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(
+			request,
+			{ ...env, OPENAI_API_KEY: "openai-key", OPENROUTER_API_KEY: "openrouter-key" },
+			ctx,
+		);
+		await waitOnExecutionContext(ctx);
+
+		expect(await response.json()).toMatchObject({
+			reply: "Respuesta de OpenRouter",
+			handoff: true,
+			imageUrl: null,
+			provider: "openrouter",
+		});
+	});
+
+	it("returns a system handoff response when keywords are detected", async () => {
+		const request = new IncomingRequest("http://example.com/chat", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ message: "quiero hablar con un asesor" }),
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(await response.json()).toMatchObject({
+			reply: "Entendido. Te estoy conectando con un asesor humano para brindarte una atención personalizada. Por favor, aguarda un momento.",
+			handoff: true,
+			imageUrl: null,
+			provider: "system",
+		});
+	});
+
+	it("returns the image plan reply when the user asks for an image", async () => {
+		globalThis.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				choices: [{ message: { content: "Respuesta de OpenAI" } }],
+			}),
+		}) as unknown as typeof fetch;
+
+		const request = new IncomingRequest("http://example.com/chat", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ message: "muéstrame la imagen" }),
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(
+			request,
+			{ ...env, OPENAI_API_KEY: "openai-key" },
+			ctx,
+		);
+		await waitOnExecutionContext(ctx);
+
+		expect(await response.json()).toMatchObject({
+			reply: "Te comparto la imagen de nuestros planes.",
+			handoff: false,
+			imageUrl:
+				"https://pub-bc555ff3adc049a0afda1bac19d846ea.r2.dev/Gemini_Generated_Image_5u2ryk5u2ryk5u2r%20(1).png",
+			provider: "system"
+		});
+	});
+
+	it("uses OpenRouter when OpenAI is not configured", async () => {
+		globalThis.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				choices: [{ message: { content: "Respuesta de OpenRouter" } }],
+			}),
+		}) as unknown as typeof fetch;
+
+		const request = new IncomingRequest("http://example.com/chat", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ message: "hola" }),
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(
+			request,
+			{ ...env, OPENROUTER_API_KEY: "openrouter-key" },
+			ctx,
+		);
+		await waitOnExecutionContext(ctx);
+
+		expect(await response.json()).toMatchObject({
+			reply: "Respuesta de OpenRouter",
+			handoff: true,
+			imageUrl: null,
+			provider: "openrouter",
 		});
 	});
 });
