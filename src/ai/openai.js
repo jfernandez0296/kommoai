@@ -1,3 +1,5 @@
+import { config } from '../config.js';
+
 export async function askOpenAI(prompt, env) {
   const hasOpenAIKey = Boolean(env?.OPENAI_API_KEY);
   console.log(`OPENAI_API_KEY presente: ${hasOpenAIKey}`);
@@ -6,7 +8,7 @@ export async function askOpenAI(prompt, env) {
     throw new Error('Falta configurar OPENAI_API_KEY');
   }
 
-  const model = env?.OPENAI_MODEL ?? 'gpt-4o-mini';
+  const model = env?.OPENAI_MODEL ?? config.defaultModel ?? 'gpt-4o-mini';
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {

@@ -79,19 +79,20 @@ async function getHMACSHA1(key, message) {
  */
 export async function sendKommoReply(message, conversationId, env) {
   const secret = env.KOMMO_CLIENT_SECRET;
-  const subdomain = env.KOMMO_SUBDOMAIN;
+  const rawSubdomain = env.KOMMO_SUBDOMAIN;
   const integrationId = env.KOMMO_INTEGRATION_ID;
 
   console.log(`KOMMO_CLIENT_SECRET presente: ${Boolean(secret)}`);
-  console.log(`KOMMO_SUBDOMAIN presente: ${Boolean(subdomain)}`);
+  console.log(`KOMMO_SUBDOMAIN presente: ${Boolean(rawSubdomain)}`);
   console.log(`KOMMO_INTEGRATION_ID presente: ${Boolean(integrationId)}`);
 
-  if (!secret || !subdomain || !integrationId) {
+  if (!secret || !rawSubdomain || !integrationId) {
     console.warn('[kommo] Faltan variables de entorno para Kommo. Saltando envío.');
     return { ok: false, error: 'Configuración incompleta' };
   }
 
-  const url = `https://${subdomain}.kommo.com/v2/origin/custom/${integrationId}`;
+  const subdomain = rawSubdomain.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
+  const url = `https://${subdomain}/v2/origin/custom/${integrationId}`;
   const method = 'POST';
   const contentType = 'application/json';
   const date = new Date().toUTCString().replace('GMT', '+0000'); // Formato RFC2822

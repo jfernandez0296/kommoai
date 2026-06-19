@@ -1,3 +1,5 @@
+import { config } from '../config.js';
+
 export async function askOpenRouter(prompt, env) {
   const hasOpenRouterKey = Boolean(env?.OPENROUTER_API_KEY);
   console.log(`OPENROUTER_API_KEY presente: ${hasOpenRouterKey}`);
@@ -6,7 +8,7 @@ export async function askOpenRouter(prompt, env) {
     throw new Error('Falta configurar OPENROUTER_API_KEY');
   }
 
-  const model = env?.OPENROUTER_MODEL ?? 'openai/gpt-4o-mini';
+  const model = env?.OPENROUTER_MODEL ?? config.defaultModel ?? 'openai/gpt-4o-mini';
   const workerUrl = env?.WORKER_URL || 'https://kommo-ai.jfernandezc.workers.dev';
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',

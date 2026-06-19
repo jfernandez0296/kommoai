@@ -7,6 +7,17 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // Manejo de CORS
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    };
+
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
+    }
+
     // 0) Endpoint de depuración (GET /debug)
     if (request.method === 'GET' && url.pathname === '/debug') {
       return Response.json({
@@ -16,23 +27,25 @@ export default {
           hasIntegrationId: !!env.KOMMO_INTEGRATION_ID,
           hasSecret: !!env.KOMMO_CLIENT_SECRET
         }
-      });
+      }, { headers: corsHeaders });
     }
 
     // 0.1) Endpoint de diagnóstico de webhooks (POST /webhook-test)
     if (request.method === 'POST' && url.pathname === '/webhook-test') {
       try {
         const body = await request.json();
-        return Response.json({ received: body });
+        return Response.json({ received: body }, { headers: corsHeaders });
       } catch (error) {
-        return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+        return Response.json({ error: 'Invalid JSON body' }, { status: 400, headers: corsHeaders });
       }
     }
 
     // 0.2) Prueba de conexión a Kommo (GET /kommo-test)
     if (request.method === 'GET' && url.pathname === '/kommo-test') {
-      const subdomain = env.KOMMO_SUBDOMAIN;
+      const rawSubdomain = env.KOMMO_SUBDOMAIN;
       const token = env.KOMMO_ACCESS_TOKEN;
+
+      const subdomain = rawSubdomain.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
 
       try {
         const response = await fetch(`https://${subdomain}/api/v4/account`, {
@@ -48,32 +61,22 @@ export default {
             success: false,
             status: response.status,
             error: responseText
-          });
+          }, { headers: corsHeaders });
         }
 
         const data = await response.json();
         return Response.json({
           success: true,
           account: data
-        });
+        }, { headers: corsHeaders });
       } catch (error) {
         return Response.json({
           success: false,
           error: String(error)
-        }, { status: 500 });
+        }, { status: 500, headers: corsHeaders });
       }
     }
 
-    // Manejo de CORS
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    };
-
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
 
     // 1) Validamos la ruta y el método para que el worker sea un endpoint de chatbot real.
     const route = routeRequest(url.pathname, request);

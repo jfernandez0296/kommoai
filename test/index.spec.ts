@@ -43,6 +43,7 @@ describe("Worker chatbot endpoint", () => {
 		await waitOnExecutionContext(ctx);
 
 		expect(response.status).toBe(200);
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
 		const data = await response.json();
 		expect(data).toHaveProperty("kommo");
 		expect(data.kommo).toHaveProperty("hasToken");
@@ -50,20 +51,26 @@ describe("Worker chatbot endpoint", () => {
 		expect(data.kommo).toHaveProperty("hasSecret");
 	});
 
-	it("returns success on /kommo-test when Kommo API responds ok", async () => {
-		globalThis.fetch = vi.fn().mockResolvedValue({
-			ok: true,
-			json: async () => ({ id: 123, name: "Test Account" }),
+	it("returns success on /kommo-test and handles subdomain", async () => {
+		globalThis.fetch = vi.fn().mockImplementation((url) => {
+			if (url === "https://test.kommo.com/api/v4/account") {
+				return Promise.resolve({
+					ok: true,
+					json: async () => ({ id: 123, name: "Test Account" }),
+				});
+			}
+			return Promise.reject(new Error("Unexpected URL: " + url));
 		}) as unknown as typeof fetch;
 
 		const request = new IncomingRequest("http://example.com/kommo-test", {
 			method: "GET"
 		});
 		const ctx = createExecutionContext();
-		const response = await worker.fetch(request, { ...env, KOMMO_SUBDOMAIN: "test.kommo.com", KOMMO_ACCESS_TOKEN: "token" }, ctx);
+		const response = await worker.fetch(request, { ...env, KOMMO_SUBDOMAIN: "test", KOMMO_ACCESS_TOKEN: "token" }, ctx);
 		await waitOnExecutionContext(ctx);
 
 		expect(response.status).toBe(200);
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
 		const data = await response.json();
 		expect(data).toMatchObject({
 			success: true,
@@ -86,6 +93,7 @@ describe("Worker chatbot endpoint", () => {
 		await waitOnExecutionContext(ctx);
 
 		expect(response.status).toBe(200);
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
 		const data = await response.json();
 		expect(data).toMatchObject({
 			success: false,
@@ -94,7 +102,7 @@ describe("Worker chatbot endpoint", () => {
 		});
 	});
 
-	it("echoes the body on /webhook-test", async () => {
+	it("echoes the body on /webhook-test with CORS", async () => {
 		const payload = { test: "data", foo: "bar" };
 		const request = new IncomingRequest("http://example.com/webhook-test", {
 			method: "POST",
@@ -106,6 +114,7 @@ describe("Worker chatbot endpoint", () => {
 		await waitOnExecutionContext(ctx);
 
 		expect(response.status).toBe(200);
+		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
 		const data = await response.json();
 		expect(data).toMatchObject({
 			received: payload
