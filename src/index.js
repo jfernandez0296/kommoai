@@ -3,6 +3,8 @@ import { saveConversationTurn } from './memory/conversationMemory.js';
 import { normalizeText, sanitizeInput } from './utils/helpers.js';
 import { sendKommoReply } from './services/kommo.js';
 
+let LAST_WEBHOOK = null;
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -34,10 +36,25 @@ export default {
     if (request.method === 'POST' && url.pathname === '/webhook-test') {
       try {
         const body = await request.json();
-        return Response.json({ received: body }, { headers: corsHeaders });
+        LAST_WEBHOOK = body;
+        return Response.json({
+          success: true,
+          timestamp: new Date().toISOString(),
+          received: body
+        }, { headers: corsHeaders });
       } catch (error) {
-        return Response.json({ error: 'Invalid JSON body' }, { status: 400, headers: corsHeaders });
+        return Response.json({
+          success: false,
+          error: 'Invalid JSON body'
+        }, { status: 400, headers: corsHeaders });
       }
+    }
+
+    // 0.1.1) Endpoint para ver el último webhook recibido (GET /last-webhook)
+    if (request.method === 'GET' && url.pathname === '/last-webhook') {
+      return Response.json({
+        lastWebhook: LAST_WEBHOOK
+      }, { headers: corsHeaders });
     }
 
     // 0.2) Prueba de conexión a Kommo (GET /kommo-test)
