@@ -19,7 +19,17 @@ export default {
       });
     }
 
-    // 0.1) Prueba de conexión a Kommo (GET /kommo-test)
+    // 0.1) Endpoint de diagnóstico de webhooks (POST /webhook-test)
+    if (request.method === 'POST' && url.pathname === '/webhook-test') {
+      try {
+        const body = await request.json();
+        return Response.json({ received: body });
+      } catch (error) {
+        return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
+      }
+    }
+
+    // 0.2) Prueba de conexión a Kommo (GET /kommo-test)
     if (request.method === 'GET' && url.pathname === '/kommo-test') {
       const subdomain = env.KOMMO_SUBDOMAIN;
       const token = env.KOMMO_ACCESS_TOKEN;

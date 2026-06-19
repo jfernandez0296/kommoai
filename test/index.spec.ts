@@ -94,6 +94,24 @@ describe("Worker chatbot endpoint", () => {
 		});
 	});
 
+	it("echoes the body on /webhook-test", async () => {
+		const payload = { test: "data", foo: "bar" };
+		const request = new IncomingRequest("http://example.com/webhook-test", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(payload)
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(200);
+		const data = await response.json();
+		expect(data).toMatchObject({
+			received: payload
+		});
+	});
+
 	it("rejects non-POST requests to the chat endpoint", async () => {
 		const request = new IncomingRequest("http://example.com/chat");
 		const ctx = createExecutionContext();
