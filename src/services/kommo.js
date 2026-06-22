@@ -1,148 +1,105 @@
 /**
- * Implementación de MD5 en JavaScript puro (requerido porque crypto.subtle.digest('MD5') no está disponible en Cloudflare Workers).
- * Basado en: https://gist.github.com/jbt/2401340
+ * Obtiene una sesión de chats via /ajax/v1/chats/session
+ * Devuelve { access_token, account_id, user }
  */
-function getMD5(text) {
-  var k = [], i = 0;
-  for (; i < 64;) k[i] = 0 | Math.abs(Math.sin(++i)) * 4294967296;
+async function getChatSession(accountUrl, token) {
+  const url = `${accountUrl}/ajax/v1/chats/session`;
+  const body = new URLSearchParams({ 'request[chats][session][action]': 'create' });
 
-  var b, c, d, j,
-    x = [],
-    str = unescape(encodeURIComponent(text)),
-    n = str.length,
-    h = [b = 0x67452301, c = 0xefcdab89, ~b, ~c],
-    words = [];
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'X-Requested-With': 'XMLHttpRequest',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
 
-  for (i = 0; i <= n; i++) words[i >> 2] |= (str.charCodeAt(i) || 128) << ((i % 4) << 3);
-  words[(((n + 8) >> 6) << 4) + 14] = n * 8;
+  if (!res.ok) throw new Error(`session error: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  console.log('[kommo] session response:', JSON.stringify(data).substring(0, 300));
 
-  for (i = 0; i < words.length; i += 16) {
-    var a = h;
-    for (j = 0; j < 64; j++) {
-      a = [
-        d = a[3],
-        (b = a[1] | 0) + (
-          (d = a[0] + [
-            b & (c = a[2]) | ~b & d,
-            d & b | ~d & c,
-            b ^ c ^ d,
-            c ^ (b | ~d)
-          ][j >> 4] + k[j] + (words[i + [
-            j,
-            5 * j + 1,
-            3 * j + 5,
-            7 * j
-          ][j >> 4] & 15] | 0)) << (j = [
-            7, 12, 17, 22,
-            5, 9, 14, 20,
-            4, 11, 16, 23,
-            6, 10, 15, 21
-          ][4 * (j >> 4) + (j & 3)]) | d >>> (32 - j)),
-        b,
-        c
-      ];
-    }
-    for (j = 0; j < 4; j++) h[j] = h[j] + a[j];
-  }
-
-  for (i = 0; i < 4; i++) {
-    for (j = 0; j < 4; j++) {
-      x.push((h[i] >> (j * 8)) & 255);
-    }
-  }
-  return x.map(function (b) { return ("00" + b.toString(16)).slice(-2); }).join("");
+  const session = data?.response?.chats?.session;
+  if (!session?.access_token) throw new Error('access_token de sesión no encontrado');
+  return session;
 }
 
 /**
- * Genera la firma HMAC-SHA1 (requerida por Kommo).
+ * Envía mensaje de respuesta vía Kommo Chat API.
+ * Replica exactamente el flujo del workflow n8n:
+ * 1. POST /ajax/v1/chats/session → obtiene access_token de sesión
+ * 2. POST amojo.kommo.com/v1/chats/{account_id}/{chat_id}/messages
  */
-async function getHMACSHA1(key, message) {
-  const encoder = new TextEncoder();
-  const keyData = encoder.encode(key);
-  const messageData = encoder.encode(message);
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyData,
-    { name: 'HMAC', hash: 'SHA-1' },
-    false,
-    ['sign'],
-  );
-
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-  const hashArray = Array.from(new Uint8Array(signature));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Envía una respuesta a Kommo a través de su API de Canales Propios (Custom Channels).
- */
-export async function sendKommoReply(message, conversationId, env) {
-  const secret = env.KOMMO_CLIENT_SECRET;
+export async function sendKommoReply(message, chatId, env, webhookParams) {
+  const token = env.KOMMO_ACCESS_TOKEN;
   const rawSubdomain = env.KOMMO_SUBDOMAIN;
-  const integrationId = env.KOMMO_INTEGRATION_ID;
 
-  console.log(`KOMMO_CLIENT_SECRET presente: ${Boolean(secret)}`);
-  console.log(`KOMMO_SUBDOMAIN presente: ${Boolean(rawSubdomain)}`);
-  console.log(`KOMMO_INTEGRATION_ID presente: ${Boolean(integrationId)}`);
-
-  if (!secret || !rawSubdomain || !integrationId) {
-    console.warn('[kommo] Faltan variables de entorno para Kommo. Saltando envío.');
+  if (!token || !rawSubdomain || !chatId) {
+    console.warn('[kommo] Faltan variables o chatId.');
     return { ok: false, error: 'Configuración incompleta' };
   }
 
-  const subdomain = rawSubdomain.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
-  const url = `https://${subdomain}/v2/origin/custom/${integrationId}`;
-  const method = 'POST';
-  const contentType = 'application/json';
-  const date = new Date().toUTCString().replace('GMT', '+0000'); // Formato RFC2822
-
-  const bodyObj = {
-    event_type: 'new_message',
-    payload: {
-      timestamp: Math.floor(Date.now() / 1000),
-      msgid: crypto.randomUUID(),
-      conversation_id: conversationId,
-      sender: {
-        id: 'bot',
-        name: 'Asistente AI',
-      },
-      message: {
-        type: 'text',
-        text: message,
-      },
-    },
-  };
-
-  const bodyStr = JSON.stringify(bodyObj);
-  const contentMD5 = getMD5(bodyStr);
-
-  // El path para la firma debe ser relativo: /v2/origin/custom/{scope_id}
-  const path = `/v2/origin/custom/${integrationId}`;
-  const stringToSign = [method, contentMD5, contentType, date, path].join('\n');
-  const signature = await getHMACSHA1(secret, stringToSign);
+  const subdomain = rawSubdomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  // Kommo usa amocrm.com para la API
+  const domain = subdomain.includes('amocrm.com') ? subdomain :
+                 subdomain.replace('kommo.com', 'amocrm.com');
+  const accountUrl = `https://${domain}`;
 
   try {
-    const response = await fetch(url, {
-      method,
-      headers: {
-        'Content-Type': contentType,
-        Date: date,
-        'Content-MD5': contentMD5,
-        'X-Signature': signature,
-      },
-      body: bodyStr,
+    // 1) Obtener sesión de chats
+    const session = await getChatSession(accountUrl, token);
+    const chatAccessToken = session.access_token;
+    const accountId = session.account?.id;
+    const userName = session.user?.name || 'Asistente AI';
+    const userAvatar = session.user?.avatar || '';
+
+    console.log(`[kommo] chat session OK, accountId: ${accountId}, chatId: ${chatId}`);
+
+    // 2) Enviar mensaje
+    const url = `https://amojo.kommo.com/v1/chats/${accountId}/${chatId}/messages`;
+    console.log(`[kommo] URL: ${url}`);
+
+    const bodyParams = new URLSearchParams({
+      silent: 'false',
+      priority: 'low',
+      persona_name: userName,
+      persona_avatar: userAvatar,
+      text: message,
+      skip_link_shortener: 'false',
     });
 
+    // Añadir campos del webhook si están disponibles
+    if (webhookParams) {
+      if (webhookParams.entity_id) bodyParams.set('crm_entity[id]', webhookParams.entity_id);
+      if (webhookParams.element_type) bodyParams.set('crm_entity[type]', webhookParams.element_type);
+      if (webhookParams.author_id) bodyParams.set('recipient_id', webhookParams.author_id);
+      if (webhookParams.talk_id) bodyParams.set('crm_dialog_id', webhookParams.talk_id);
+      if (webhookParams.contact_id) bodyParams.set('crm_contact_id', webhookParams.contact_id);
+      if (webhookParams.account_id) bodyParams.set('crm_account_id', webhookParams.account_id);
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Auth-Token': chatAccessToken,
+        'chatId': chatId,
+      },
+      body: bodyParams.toString(),
+    });
+
+    const responseText = await response.text();
+    console.log(`[kommo] status: ${response.status}, body: ${responseText}`);
+
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[kommo] Error al enviar mensaje (${response.status}):`, errorText);
-      return { ok: false, status: response.status, details: errorText };
+      return { ok: false, status: response.status, details: responseText };
     }
 
     return { ok: true };
   } catch (error) {
-    console.error('[kommo] Fallo crítico de red al enviar mensaje:', error);
+    console.error('[kommo] Fallo:', error);
     return { ok: false, error: String(error) };
   }
 }
