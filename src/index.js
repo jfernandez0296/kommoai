@@ -69,8 +69,17 @@ export default {
                              params.get('chat_id') || '';
 
       // Tipo de mensaje: 1=entrante (del cliente), 2=saliente (del agente)
-      // Solo respondemos a mensajes entrantes del cliente
       const direction = params.get('message[add][0][type]') || '';
+
+      // Parámetros extra del webhook para enriquecer el mensaje en Kommo
+      const webhookParams = {
+        entity_id: params.get('message[add][0][entity_id]') || params.get('message[add][0][element_id]'),
+        element_type: params.get('message[add][0][element_type]'),
+        author_id: params.get('message[add][0][author][id]') || params.get('message[add][0][author_id]'),
+        talk_id: params.get('message[add][0][talk_id]'),
+        contact_id: params.get('message[add][0][contact_id]'),
+        account_id: params.get('account[id]'),
+      };
 
       console.log(`messageText: "${messageText}", conversationId: "${conversationId}", direction: "${direction}"`);
       console.log('Todos los params:', [...params.entries()].map(([k,v]) => `${k}=${v}`).join(' | '));
@@ -95,7 +104,7 @@ export default {
       try {
         const result = await processUserMessage(message, env, ctx);
         saveConversationTurn(message, result.reply, { route: 'webhook', handoff: result.handoff });
-        ctx.waitUntil(sendKommoReply(result.reply, conversationId, env));
+        ctx.waitUntil(sendKommoReply(result.reply, conversationId, env, params));
         return Response.json({ ok: true, reply: result.reply }, { headers: corsHeaders });
       } catch (error) {
         console.error('[webhook] Error procesando mensaje:', error);
@@ -122,7 +131,7 @@ export default {
         saveConversationTurn(message, result.reply, { route: 'chat', handoff: result.handoff });
 
         if (conversationId) {
-          ctx.waitUntil(sendKommoReply(result.reply, conversationId, env));
+          ctx.waitUntil(sendKommoReply(result.reply, conversationId, env, params));
         }
 
         return Response.json(result, { status: 200, headers: corsHeaders });
