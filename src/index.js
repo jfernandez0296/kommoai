@@ -26,6 +26,7 @@ export default {
         kommo: {
           subdomain: env.KOMMO_SUBDOMAIN,
           hasToken: !!env.KOMMO_ACCESS_TOKEN,
+          tokenLength: env.KOMMO_ACCESS_TOKEN?.length || 0,
           hasIntegrationId: !!env.KOMMO_INTEGRATION_ID,
           hasSecret: !!env.KOMMO_CLIENT_SECRET
         }

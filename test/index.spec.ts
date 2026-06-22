@@ -47,6 +47,7 @@ describe("Worker chatbot endpoint", () => {
 		const data = await response.json();
 		expect(data).toHaveProperty("kommo");
 		expect(data.kommo).toHaveProperty("hasToken");
+		expect(data.kommo).toHaveProperty("tokenLength");
 		expect(data.kommo).toHaveProperty("hasIntegrationId");
 		expect(data.kommo).toHaveProperty("hasSecret");
 	});
