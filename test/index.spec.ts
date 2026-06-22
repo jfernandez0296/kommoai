@@ -102,7 +102,7 @@ describe("Worker chatbot endpoint", () => {
 		});
 	});
 
-	it("echoes the body on /webhook-test with CORS", async () => {
+	it("echoes the body on /webhook-test and saves it to /last-webhook", async () => {
 		const payload = { test: "data", foo: "bar" };
 		const request = new IncomingRequest("http://example.com/webhook-test", {
 			method: "POST",
@@ -117,7 +117,19 @@ describe("Worker chatbot endpoint", () => {
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
 		const data = await response.json();
 		expect(data).toMatchObject({
+			success: true,
 			received: payload
+		});
+		expect(data.timestamp).toBeDefined();
+
+		// Verify it was saved
+		const requestLast = new IncomingRequest("http://example.com/last-webhook", {
+			method: "GET"
+		});
+		const responseLast = await worker.fetch(requestLast, env, ctx);
+		const dataLast = await responseLast.json();
+		expect(dataLast).toMatchObject({
+			lastWebhook: payload
 		});
 	});
 
