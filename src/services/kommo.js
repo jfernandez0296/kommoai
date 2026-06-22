@@ -102,8 +102,10 @@ export async function sendKommoReply(message, chatId, env) {
     console.log(`[kommo] amojo_id: ${amojoId}, chatId: ${chatId}`);
 
     // X-Auth-Token = MD5(amojo_id + client_secret)
+    console.log(`[kommo] clientSecret length: ${clientSecret?.length}, presente: ${Boolean(clientSecret)}`);
+    console.log(`[kommo] md5 input: ${amojoId + clientSecret}`);
     const authToken = await md5(amojoId + clientSecret);
-    console.log(`[kommo] X-Auth-Token: ${authToken}`);
+    console.log(`[kommo] X-Auth-Token generado: ${authToken}`);
 
     const url = `https://amojo.kommo.com/v1/chats/${amojoId}/${chatId}/messages`;
     console.log(`[kommo] URL: ${url}`);
