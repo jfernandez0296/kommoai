@@ -103,6 +103,28 @@ describe("Worker chatbot endpoint", () => {
 		});
 	});
 
+	it("returns success on /kommo-send-test", async () => {
+		// sendKommoReply implementation uses fetch, so we mock fetch
+		globalThis.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({ ok: true }),
+		}) as unknown as typeof fetch;
+
+		const payload = { conversationId: "c1", message: "hello" };
+		const request = new IncomingRequest("http://example.com/kommo-send-test", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(payload)
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, { ...env, KOMMO_CLIENT_SECRET: "s", KOMMO_SUBDOMAIN: "d", KOMMO_INTEGRATION_ID: "i" }, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(200);
+		const data = await response.json();
+		expect(data).toMatchObject({ ok: true });
+	});
+
 	it("echoes the body on /webhook-test and saves it to /last-webhook", async () => {
 		const payload = { test: "data", foo: "bar" };
 		const request = new IncomingRequest("http://example.com/webhook-test", {
