@@ -37,6 +37,10 @@ export default {
       try {
         const body = await request.json();
         LAST_WEBHOOK = body;
+
+        console.log('WEBHOOK RECEIVED');
+        console.log(JSON.stringify(body, null, 2));
+
         return Response.json({
           success: true,
           timestamp: new Date().toISOString(),
