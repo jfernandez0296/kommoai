@@ -64,10 +64,8 @@ export default {
       const messageText = params.get('message[add][0][text]') || 
                           params.get('message[0][text]') || '';
       
-      // El id de conversación puede venir como talk_id o conversation_id
-      const conversationId = params.get('message[add][0][talk_id]') ||
-                             params.get('message[add][0][chat_id]') ||
-                             params.get('talk_id') ||
+      // chat_id UUID necesario para la Chat API de amojo.kommo.com
+      const conversationId = params.get('message[add][0][chat_id]') ||
                              params.get('chat_id') || '';
 
       // Tipo de mensaje: 1=entrante (del cliente), 2=saliente (del agente)
