@@ -26,7 +26,7 @@ export async function sendKommoReply(message, talkId, env) {
 
   try {
     const response = await fetch(url, {
-      method: 'POST',
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
