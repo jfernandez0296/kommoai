@@ -39,8 +39,10 @@ export default {
         const body = await request.json();
         LAST_WEBHOOK = body;
 
-        console.log('WEBHOOK RECEIVED');
+        console.log('====================================');
+        console.log('KOMMO WEBHOOK RECEIVED');
         console.log(JSON.stringify(body, null, 2));
+        console.log('====================================');
 
         return Response.json({
           success: true,
@@ -62,7 +64,19 @@ export default {
       }, { headers: corsHeaders });
     }
 
-    // 0.2) Prueba de conexión a Kommo (GET /kommo-test)
+    // 0.2) Prueba de envío a Kommo (POST /kommo-send-test)
+    if (request.method === 'POST' && url.pathname === '/kommo-send-test') {
+      try {
+        const body = await request.json();
+        const { conversationId, message } = body;
+        const result = await sendKommoReply(message, conversationId, env);
+        return Response.json(result, { headers: corsHeaders });
+      } catch (error) {
+        return Response.json({ success: false, error: String(error) }, { status: 400, headers: corsHeaders });
+      }
+    }
+
+    // 0.3) Prueba de conexión a Kommo (GET /kommo-test)
     if (request.method === 'GET' && url.pathname === '/kommo-test') {
       const rawSubdomain = env.KOMMO_SUBDOMAIN;
       const token = env.KOMMO_ACCESS_TOKEN;
