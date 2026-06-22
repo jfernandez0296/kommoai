@@ -3,8 +3,6 @@ import { saveConversationTurn } from './memory/conversationMemory.js';
 import { normalizeText, sanitizeInput } from './utils/helpers.js';
 import { sendKommoReply } from './services/kommo.js';
 
-let LAST_WEBHOOK = null;
-
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -32,11 +30,6 @@ export default {
       }, { headers: corsHeaders });
     }
 
-    // ── Debug: GET /last-webhook ───────────────────────────────────────────
-    if (request.method === 'GET' && url.pathname === '/last-webhook') {
-      return Response.json({ lastWebhook: LAST_WEBHOOK }, { headers: corsHeaders });
-    }
-
     // ── Test conexión Kommo: GET /kommo-test ───────────────────────────────
     if (request.method === 'GET' && url.pathname === '/kommo-test') {
       const rawSubdomain = env.KOMMO_SUBDOMAIN;
@@ -53,52 +46,58 @@ export default {
       }
     }
 
-    // ── WEBHOOK de Kommo: POST / o POST /webhook ───────────────────────────
-    // FIX: antes este path era rechazado con 405. Ahora lo procesamos.
+    // ── WEBHOOK de Kommo: POST /webhook ────────────────────────────────────
+    // Kommo envía application/x-www-form-urlencoded, NO JSON
     if (request.method === 'POST' && (url.pathname === '/' || url.pathname === '/webhook')) {
-      let body;
+      let params;
       try {
-        body = await request.json();
-      } catch {
-        return Response.json({ error: 'Invalid JSON' }, { status: 400, headers: corsHeaders });
+        const text = await request.text();
+        params = new URLSearchParams(text);
+        console.log('WEBHOOK RAW:', text.substring(0, 500));
+      } catch (e) {
+        return Response.json({ error: 'Error leyendo body' }, { status: 400, headers: corsHeaders });
       }
 
-      LAST_WEBHOOK = body;
-      console.log('WEBHOOK RECIBIDO:', JSON.stringify(body, null, 2));
+      // Kommo envía los mensajes entrantes en message[add][0][*]
+      // y los mensajes salientes en message[add][0][*] también pero con flag
+      // Extraemos el texto y el conversation_id (chat_id en Kommo)
+      const messageText = params.get('message[add][0][text]') || 
+                          params.get('message[0][text]') || '';
+      
+      // El id de conversación puede venir como talk_id o conversation_id
+      const conversationId = params.get('message[add][0][talk_id]') ||
+                             params.get('message[add][0][chat_id]') ||
+                             params.get('talk_id') ||
+                             params.get('chat_id') || '';
 
-      // FIX: parsear correctamente el payload de Kommo
-      // Kommo envía: { event_type, payload: { conversation_id, message: { text } } }
-      const eventType = body?.event_type;
+      // Tipo de mensaje: 1=entrante (del cliente), 2=saliente (del agente)
+      // Solo respondemos a mensajes entrantes del cliente
+      const direction = params.get('message[add][0][type]') || '';
 
-      // Solo procesamos mensajes entrantes del usuario
-      if (eventType !== 'new_message') {
-        return Response.json({ ok: true, skipped: true, reason: `event_type '${eventType}' ignorado` }, { headers: corsHeaders });
+      console.log(`messageText: "${messageText}", conversationId: "${conversationId}", direction: "${direction}"`);
+      console.log('Todos los params:', [...params.entries()].map(([k,v]) => `${k}=${v}`).join(' | '));
+
+      // Si es mensaje saliente (enviado por un agente/bot), ignoramos para evitar loop
+      if (direction === '2') {
+        return Response.json({ ok: true, skipped: true, reason: 'Mensaje saliente ignorado' }, { headers: corsHeaders });
       }
 
-      const conversationId = body?.payload?.conversation_id;
-      const rawMessage = normalizeText(
-        body?.payload?.message?.text ?? body?.payload?.message ?? ''
-      );
-      const message = sanitizeInput(rawMessage);
-
-      console.log(`conversationId: ${conversationId}, message: "${message}"`);
+      const message = sanitizeInput(normalizeText(messageText));
 
       if (!message) {
         return Response.json({ ok: true, skipped: true, reason: 'Mensaje vacío' }, { headers: corsHeaders });
       }
 
       if (!conversationId) {
-        console.warn('[webhook] No se encontró conversation_id en el payload');
-        return Response.json({ ok: false, error: 'conversation_id no encontrado en el payload' }, { status: 400, headers: corsHeaders });
+        console.warn('[webhook] No se encontró conversation_id/talk_id en el payload');
+        // Respondemos 200 para que Kommo no reintente, pero logueamos el problema
+        return Response.json({ ok: false, error: 'conversation_id no encontrado', hint: 'Revisar logs para ver params recibidos' }, { headers: corsHeaders });
       }
 
       try {
         const result = await processUserMessage(message, env, ctx);
         saveConversationTurn(message, result.reply, { route: 'webhook', handoff: result.handoff });
-
-        // Enviamos la respuesta a Kommo de forma asíncrona
         ctx.waitUntil(sendKommoReply(result.reply, conversationId, env));
-
         return Response.json({ ok: true, reply: result.reply }, { headers: corsHeaders });
       } catch (error) {
         console.error('[webhook] Error procesando mensaje:', error);
@@ -109,7 +108,7 @@ export default {
       }
     }
 
-    // ── Chat directo (para pruebas): POST /chat ────────────────────────────
+    // ── Chat directo (para pruebas con JSON): POST /chat ──────────────────
     if (request.method === 'POST' && url.pathname === '/chat') {
       try {
         const body = await request.json().catch(() => ({}));
@@ -137,7 +136,6 @@ export default {
       }
     }
 
-    // ── Fallback ───────────────────────────────────────────────────────────
     return Response.json({ error: 'Endpoint no encontrado' }, { status: 404, headers: corsHeaders });
   },
 };
