@@ -95,7 +95,7 @@ export async function sendKommoReply(message, conversationId, env) {
   const url = `https://${subdomain}/v2/origin/custom/${integrationId}`;
   const method = 'POST';
   const contentType = 'application/json';
-  const date = new Date().toUTCString().replace('GMT', '+0000'); // Formato RFC2822
+  const date = new Date().toUTCString(); // RFC 7231, debe terminar en 'GMT' // Formato RFC2822
 
   const bodyObj = {
     event_type: 'new_message',
