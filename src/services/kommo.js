@@ -4,7 +4,7 @@
  * para no hardcodearlo.
  */
 async function getAmojoId(subdomain, token) {
-  const res = await fetch(`https://${subdomain}/api/v4/account`, {
+  const res = await fetch(`https://${subdomain}/api/v4/account?with=amojo_id`, {
     headers: { 'Authorization': `Bearer ${token}` },
   });
   if (!res.ok) {

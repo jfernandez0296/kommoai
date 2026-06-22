@@ -36,7 +36,7 @@ export default {
       const token = env.KOMMO_ACCESS_TOKEN;
       const subdomain = rawSubdomain?.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
       try {
-        const res = await fetch(`https://${subdomain}/api/v4/account`, {
+        const res = await fetch(`https://${subdomain}/api/v4/account?with=amojo_id`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const data = res.ok ? await res.json() : await res.text();
