@@ -3,6 +3,8 @@ import { saveConversationTurn } from './memory/conversationMemory.js';
 import { normalizeText, sanitizeInput } from './utils/helpers.js';
 import { sendKommoReply } from './services/kommo.js';
 
+let LAST_WEBHOOK = null;
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -30,17 +32,54 @@ export default {
       }, { headers: corsHeaders });
     }
 
+    // ── Diagnóstico de webhooks: POST /webhook-test ────────────────────────
+    if (request.method === 'POST' && url.pathname === '/webhook-test') {
+      try {
+        const body = await request.json();
+        LAST_WEBHOOK = body;
+        console.log('WEBHOOK-TEST RECIBIDO:', JSON.stringify(body, null, 2));
+        return Response.json({
+          success: true,
+          timestamp: new Date().toISOString(),
+          received: body,
+        }, { headers: corsHeaders });
+      } catch (error) {
+        return Response.json({ success: false, error: 'Invalid JSON body' }, { status: 400, headers: corsHeaders });
+      }
+    }
+
+    // ── Último webhook recibido: GET /last-webhook ─────────────────────────
+    if (request.method === 'GET' && url.pathname === '/last-webhook') {
+      return Response.json({ lastWebhook: LAST_WEBHOOK }, { headers: corsHeaders });
+    }
+
+    // ── Prueba de envío a Kommo: POST /kommo-send-test ─────────────────────
+    if (request.method === 'POST' && url.pathname === '/kommo-send-test') {
+      try {
+        const body = await request.json();
+        const { conversationId, message } = body;
+        const result = await sendKommoReply(message, conversationId, env);
+        return Response.json(result, { headers: corsHeaders });
+      } catch (error) {
+        return Response.json({ success: false, error: String(error) }, { status: 400, headers: corsHeaders });
+      }
+    }
+
     // ── Test conexión Kommo: GET /kommo-test ───────────────────────────────
     if (request.method === 'GET' && url.pathname === '/kommo-test') {
       const rawSubdomain = env.KOMMO_SUBDOMAIN;
       const token = env.KOMMO_ACCESS_TOKEN;
       const subdomain = rawSubdomain?.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
       try {
-        const res = await fetch(`https://${subdomain}/api/v4/account?with=amojo_id`, {
+        const res = await fetch(`https://${subdomain}/api/v4/account`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        const data = res.ok ? await res.json() : await res.text();
-        return Response.json({ success: res.ok, status: res.status, data }, { headers: corsHeaders });
+        if (!res.ok) {
+          const errorText = await res.text();
+          return Response.json({ success: false, status: res.status, error: errorText }, { headers: corsHeaders });
+        }
+        const account = await res.json();
+        return Response.json({ success: true, account }, { headers: corsHeaders });
       } catch (error) {
         return Response.json({ success: false, error: String(error) }, { status: 500, headers: corsHeaders });
       }
@@ -116,7 +155,11 @@ export default {
     }
 
     // ── Chat directo (para pruebas con JSON): POST /chat ──────────────────
-    if (request.method === 'POST' && url.pathname === '/chat') {
+    if (url.pathname === '/chat') {
+      if (request.method !== 'POST') {
+        return Response.json({ error: 'Only POST /chat is supported' }, { status: 405, headers: corsHeaders });
+      }
+
       try {
         const body = await request.json().catch(() => ({}));
         const rawMessage = normalizeText(body?.message?.text ?? body?.message ?? '');
@@ -131,7 +174,7 @@ export default {
         saveConversationTurn(message, result.reply, { route: 'chat', handoff: result.handoff });
 
         if (conversationId) {
-          ctx.waitUntil(sendKommoReply(result.reply, conversationId, env, params));
+          ctx.waitUntil(sendKommoReply(result.reply, conversationId, env));
         }
 
         return Response.json(result, { status: 200, headers: corsHeaders });
