@@ -1,91 +1,93 @@
 /**
- * Genera firma HMAC-SHA1 para amojo.kommo.com
+ * Obtiene una sesión de chats via /ajax/v1/chats/session
+ * Devuelve { access_token, account_id, user }
  */
-async function hmacSHA1(secret, message) {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    'raw', encoder.encode(secret),
-    { name: 'HMAC', hash: 'SHA-1' },
-    false, ['sign']
-  );
-  const sig = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
-  return Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
+async function getChatSession(accountUrl, token) {
+  const url = `${accountUrl}/ajax/v1/chats/session`;
+  const body = new URLSearchParams({ 'request[chats][session][action]': 'create' });
 
-/**
- * Obtiene amojo_id de la cuenta via /api/v4/account
- */
-async function getAmojoId(subdomain, token) {
-  const domain = subdomain.includes('amocrm.com') ? subdomain :
-                 subdomain.replace('kommo.com', 'amocrm.com');
-  const res = await fetch(`https://${domain}/api/v4/account?with=amojo_id`, {
-    headers: { 'Authorization': `Bearer ${token}` },
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'X-Requested-With': 'XMLHttpRequest',
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
   });
-  if (!res.ok) throw new Error(`account info error: ${res.status}`);
+
+  if (!res.ok) throw new Error(`session error: ${res.status} ${await res.text()}`);
   const data = await res.json();
-  if (!data?.amojo_id) throw new Error('amojo_id no encontrado');
-  return data.amojo_id;
+  console.log('[kommo] session response:', JSON.stringify(data).substring(0, 300));
+
+  const session = data?.response?.chats?.session;
+  if (!session?.access_token) throw new Error('access_token de sesión no encontrado');
+  return session;
 }
 
 /**
- * Envía mensaje de respuesta vía Kommo Custom Channel API (amojo).
- * 
- * scope_id = {integration_id}_{amojo_id}
- * Autenticación: X-Signature (HMAC-SHA1 del body con client_secret)
- * Fecha: RFC 2822 con +0000
+ * Envía mensaje de respuesta vía Kommo Chat API.
+ * Replica exactamente el flujo del workflow n8n:
+ * 1. POST /ajax/v1/chats/session → obtiene access_token de sesión
+ * 2. POST amojo.kommo.com/v1/chats/{account_id}/{chat_id}/messages
  */
-export async function sendKommoReply(message, conversationId, env) {
+export async function sendKommoReply(message, chatId, env, webhookParams) {
   const token = env.KOMMO_ACCESS_TOKEN;
   const rawSubdomain = env.KOMMO_SUBDOMAIN;
-  const integrationId = env.KOMMO_INTEGRATION_ID;   // ID de la integración (KOMMO WORKER)
-  const clientSecret = env.KOMMO_CLIENT_SECRET;      // Clave secreta de la integración
 
-  if (!token || !rawSubdomain || !integrationId || !clientSecret || !conversationId) {
-    console.warn('[kommo] Faltan variables de entorno o conversationId.');
+  if (!token || !rawSubdomain || !chatId) {
+    console.warn('[kommo] Faltan variables o chatId.');
     return { ok: false, error: 'Configuración incompleta' };
   }
 
   const subdomain = rawSubdomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  // Kommo usa amocrm.com para la API
+  const domain = subdomain.includes('amocrm.com') ? subdomain :
+                 subdomain.replace('kommo.com', 'amocrm.com');
+  const accountUrl = `https://${domain}`;
 
   try {
-    // 1) Obtener amojo_id
-    const amojoId = await getAmojoId(subdomain, token);
-    console.log(`[kommo] amojo_id: ${amojoId}`);
+    // 1) Obtener sesión de chats
+    const session = await getChatSession(accountUrl, token);
+    const chatAccessToken = session.access_token;
+    const accountId = session.account?.id;
+    const userName = session.user?.name || 'Asistente AI';
+    const userAvatar = session.user?.avatar || '';
 
-    // 2) Construir scope_id y body
-    const scopeId = `${integrationId}_${amojoId}`;
-    const bodyObj = {
-      event_type: 'new_message',
-      payload: {
-        timestamp: Math.floor(Date.now() / 1000),
-        msgid: crypto.randomUUID(),
-        conversation_id: conversationId,
-        sender: { id: 'bot', name: 'Asistente AI' },
-        message: { type: 'text', text: message },
-      },
-    };
-    const bodyStr = JSON.stringify(bodyObj);
+    console.log(`[kommo] chat session OK, accountId: ${accountId}, chatId: ${chatId}`);
 
-    // 3) Headers con firma
-    const date = new Date().toUTCString().replace('GMT', '+0000');
-    const contentType = 'application/json';
-    const path = `/v2/origin/custom/${scopeId}`;
-    const stringToSign = ['POST', '', contentType, date, path].join('\n');
-    const signature = await hmacSHA1(clientSecret, stringToSign);
-
-    const url = `https://amojo.kommo.com${path}`;
+    // 2) Enviar mensaje
+    const url = `https://amojo.kommo.com/v1/chats/${accountId}/${chatId}/messages`;
     console.log(`[kommo] URL: ${url}`);
-    console.log(`[kommo] stringToSign: ${JSON.stringify(stringToSign)}`);
 
-    // 4) Enviar
+    const bodyParams = new URLSearchParams({
+      silent: 'false',
+      priority: 'low',
+      persona_name: userName,
+      persona_avatar: userAvatar,
+      text: message,
+      skip_link_shortener: 'false',
+    });
+
+    // Añadir campos del webhook si están disponibles
+    if (webhookParams) {
+      if (webhookParams.entity_id) bodyParams.set('crm_entity[id]', webhookParams.entity_id);
+      if (webhookParams.element_type) bodyParams.set('crm_entity[type]', webhookParams.element_type);
+      if (webhookParams.author_id) bodyParams.set('recipient_id', webhookParams.author_id);
+      if (webhookParams.talk_id) bodyParams.set('crm_dialog_id', webhookParams.talk_id);
+      if (webhookParams.contact_id) bodyParams.set('crm_contact_id', webhookParams.contact_id);
+      if (webhookParams.account_id) bodyParams.set('crm_account_id', webhookParams.account_id);
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': contentType,
-        'Date': date,
-        'X-Signature': signature,
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Auth-Token': chatAccessToken,
+        'chatId': chatId,
       },
-      body: bodyStr,
+      body: bodyParams.toString(),
     });
 
     const responseText = await response.text();
