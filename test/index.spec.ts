@@ -104,28 +104,11 @@ describe("Worker chatbot endpoint", () => {
 	});
 
 	it("returns success on /kommo-send-test", async () => {
-		// sendKommoReply primero abre una sesión de chat y luego envía el mensaje,
-		// ambos pasos usan fetch, así que mockeamos las dos llamadas en orden.
-		globalThis.fetch = vi
-			.fn()
-			.mockResolvedValueOnce({
-				ok: true,
-				json: async () => ({
-					response: {
-						chats: {
-							session: {
-								access_token: "session-token",
-								account: { id: 999 },
-								user: { name: "Bot" },
-							},
-						},
-					},
-				}),
-			})
-			.mockResolvedValueOnce({
-				ok: true,
-				text: async () => "OK",
-			}) as unknown as typeof fetch;
+		// sendKommoReply firma el cuerpo (HMAC-SHA1) y lo envía a amojo.kommo.com en una sola llamada fetch
+		globalThis.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			text: async () => "OK",
+		}) as unknown as typeof fetch;
 
 		const payload = { conversationId: "c1", message: "hello" };
 		const request = new IncomingRequest("http://example.com/kommo-send-test", {
@@ -134,7 +117,7 @@ describe("Worker chatbot endpoint", () => {
 			body: JSON.stringify(payload)
 		});
 		const ctx = createExecutionContext();
-		const response = await worker.fetch(request, { ...env, KOMMO_ACCESS_TOKEN: "token", KOMMO_SUBDOMAIN: "d" }, ctx);
+		const response = await worker.fetch(request, { ...env, KOMMO_CLIENT_SECRET: "s", KOMMO_INTEGRATION_ID: "i" }, ctx);
 		await waitOnExecutionContext(ctx);
 
 		expect(response.status).toBe(200);

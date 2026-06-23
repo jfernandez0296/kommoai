@@ -1,93 +1,220 @@
 /**
- * Obtiene una sesión de chats via /ajax/v1/chats/session
- * Devuelve { access_token, account_id, user }
+ * Implementación de MD5 en JavaScript puro (requerido porque crypto.subtle.digest('MD5') no está disponible en Cloudflare Workers).
+ * Basada en el algoritmo de Joseph Myers (dominio público), usado también por blueimp-md5.
  */
-async function getChatSession(accountUrl, token) {
-  const url = `${accountUrl}/ajax/v1/chats/session`;
-  const body = new URLSearchParams({ 'request[chats][session][action]': 'create' });
+function add32(a, b) {
+  return (a + b) & 0xffffffff;
+}
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'X-Requested-With': 'XMLHttpRequest',
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: body.toString(),
-  });
+function cmn(q, a, b, x, s, t) {
+  a = add32(add32(a, q), add32(x, t));
+  return add32((a << s) | (a >>> (32 - s)), b);
+}
+function ff(a, b, c, d, x, s, t) { return cmn((b & c) | (~b & d), a, b, x, s, t); }
+function gg(a, b, c, d, x, s, t) { return cmn((b & d) | (c & ~d), a, b, x, s, t); }
+function hh(a, b, c, d, x, s, t) { return cmn(b ^ c ^ d, a, b, x, s, t); }
+function ii(a, b, c, d, x, s, t) { return cmn(c ^ (b | ~d), a, b, x, s, t); }
 
-  if (!res.ok) throw new Error(`session error: ${res.status} ${await res.text()}`);
-  const data = await res.json();
-  console.log('[kommo] session response:', JSON.stringify(data).substring(0, 300));
+function md5cycle(x, k) {
+  let a = x[0], b = x[1], c = x[2], d = x[3];
 
-  const session = data?.response?.chats?.session;
-  if (!session?.access_token) throw new Error('access_token de sesión no encontrado');
-  return session;
+  a = ff(a, b, c, d, k[0], 7, -680876936);
+  d = ff(d, a, b, c, k[1], 12, -389564586);
+  c = ff(c, d, a, b, k[2], 17, 606105819);
+  b = ff(b, c, d, a, k[3], 22, -1044525330);
+  a = ff(a, b, c, d, k[4], 7, -176418897);
+  d = ff(d, a, b, c, k[5], 12, 1200080426);
+  c = ff(c, d, a, b, k[6], 17, -1473231341);
+  b = ff(b, c, d, a, k[7], 22, -45705983);
+  a = ff(a, b, c, d, k[8], 7, 1770035416);
+  d = ff(d, a, b, c, k[9], 12, -1958414417);
+  c = ff(c, d, a, b, k[10], 17, -42063);
+  b = ff(b, c, d, a, k[11], 22, -1990404162);
+  a = ff(a, b, c, d, k[12], 7, 1804603682);
+  d = ff(d, a, b, c, k[13], 12, -40341101);
+  c = ff(c, d, a, b, k[14], 17, -1502002290);
+  b = ff(b, c, d, a, k[15], 22, 1236535329);
+
+  a = gg(a, b, c, d, k[1], 5, -165796510);
+  d = gg(d, a, b, c, k[6], 9, -1069501632);
+  c = gg(c, d, a, b, k[11], 14, 643717713);
+  b = gg(b, c, d, a, k[0], 20, -373897302);
+  a = gg(a, b, c, d, k[5], 5, -701558691);
+  d = gg(d, a, b, c, k[10], 9, 38016083);
+  c = gg(c, d, a, b, k[15], 14, -660478335);
+  b = gg(b, c, d, a, k[4], 20, -405537848);
+  a = gg(a, b, c, d, k[9], 5, 568446438);
+  d = gg(d, a, b, c, k[14], 9, -1019803690);
+  c = gg(c, d, a, b, k[3], 14, -187363961);
+  b = gg(b, c, d, a, k[8], 20, 1163531501);
+  a = gg(a, b, c, d, k[13], 5, -1444681467);
+  d = gg(d, a, b, c, k[2], 9, -51403784);
+  c = gg(c, d, a, b, k[7], 14, 1735328473);
+  b = gg(b, c, d, a, k[12], 20, -1926607734);
+
+  a = hh(a, b, c, d, k[5], 4, -378558);
+  d = hh(d, a, b, c, k[8], 11, -2022574463);
+  c = hh(c, d, a, b, k[11], 16, 1839030562);
+  b = hh(b, c, d, a, k[14], 23, -35309556);
+  a = hh(a, b, c, d, k[1], 4, -1530992060);
+  d = hh(d, a, b, c, k[4], 11, 1272893353);
+  c = hh(c, d, a, b, k[7], 16, -155497632);
+  b = hh(b, c, d, a, k[10], 23, -1094730640);
+  a = hh(a, b, c, d, k[13], 4, 681279174);
+  d = hh(d, a, b, c, k[0], 11, -358537222);
+  c = hh(c, d, a, b, k[3], 16, -722521979);
+  b = hh(b, c, d, a, k[6], 23, 76029189);
+  a = hh(a, b, c, d, k[9], 4, -640364487);
+  d = hh(d, a, b, c, k[12], 11, -421815835);
+  c = hh(c, d, a, b, k[15], 16, 530742520);
+  b = hh(b, c, d, a, k[2], 23, -995338651);
+
+  a = ii(a, b, c, d, k[0], 6, -198630844);
+  d = ii(d, a, b, c, k[7], 10, 1126891415);
+  c = ii(c, d, a, b, k[14], 15, -1416354905);
+  b = ii(b, c, d, a, k[5], 21, -57434055);
+  a = ii(a, b, c, d, k[12], 6, 1700485571);
+  d = ii(d, a, b, c, k[3], 10, -1894986606);
+  c = ii(c, d, a, b, k[10], 15, -1051523);
+  b = ii(b, c, d, a, k[1], 21, -2054922799);
+  a = ii(a, b, c, d, k[8], 6, 1873313359);
+  d = ii(d, a, b, c, k[15], 10, -30611744);
+  c = ii(c, d, a, b, k[6], 15, -1560198380);
+  b = ii(b, c, d, a, k[13], 21, 1309151649);
+  a = ii(a, b, c, d, k[4], 6, -145523070);
+  d = ii(d, a, b, c, k[11], 10, -1120210379);
+  c = ii(c, d, a, b, k[2], 15, 718787259);
+  b = ii(b, c, d, a, k[9], 21, -343485551);
+
+  x[0] = add32(a, x[0]);
+  x[1] = add32(b, x[1]);
+  x[2] = add32(c, x[2]);
+  x[3] = add32(d, x[3]);
+}
+
+function md5blk(s) {
+  const blocks = [];
+  for (let i = 0; i < 64; i += 4) {
+    blocks[i >> 2] = s.charCodeAt(i) + (s.charCodeAt(i + 1) << 8) + (s.charCodeAt(i + 2) << 16) + (s.charCodeAt(i + 3) << 24);
+  }
+  return blocks;
+}
+
+function md51(s) {
+  const n = s.length;
+  const state = [1732584193, -271733879, -1732584194, 271733878];
+  let i;
+  for (i = 64; i <= s.length; i += 64) {
+    md5cycle(state, md5blk(s.substring(i - 64, i)));
+  }
+  s = s.substring(i - 64);
+  const tail = new Array(16).fill(0);
+  for (i = 0; i < s.length; i++) tail[i >> 2] |= s.charCodeAt(i) << ((i % 4) << 3);
+  tail[i >> 2] |= 0x80 << ((i % 4) << 3);
+  if (i > 55) {
+    md5cycle(state, tail);
+    for (i = 0; i < 16; i++) tail[i] = 0;
+  }
+  tail[14] = n * 8;
+  md5cycle(state, tail);
+  return state;
+}
+
+const HEX_CHARS = '0123456789abcdef'.split('');
+function rhex(n) {
+  let s = '';
+  for (let j = 0; j < 4; j++) s += HEX_CHARS[(n >> (j * 8 + 4)) & 0x0f] + HEX_CHARS[(n >> (j * 8)) & 0x0f];
+  return s;
+}
+
+function getMD5(text) {
+  const str = unescape(encodeURIComponent(text));
+  return md51(str).map(rhex).join('');
 }
 
 /**
- * Envía mensaje de respuesta vía Kommo Chat API.
- * Replica exactamente el flujo del workflow n8n:
- * 1. POST /ajax/v1/chats/session → obtiene access_token de sesión
- * 2. POST amojo.kommo.com/v1/chats/{account_id}/{chat_id}/messages
+ * Genera la firma HMAC-SHA1 (requerida por la Chats API de Kommo).
  */
-export async function sendKommoReply(message, chatId, env, webhookParams) {
-  const token = env.KOMMO_ACCESS_TOKEN;
-  const rawSubdomain = env.KOMMO_SUBDOMAIN;
+async function getHMACSHA1(key, message) {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(key);
+  const messageData = encoder.encode(message);
 
-  if (!token || !rawSubdomain || !chatId) {
-    console.warn('[kommo] Faltan variables o chatId.');
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-1' },
+    false,
+    ['sign'],
+  );
+
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
+  const hashArray = Array.from(new Uint8Array(signature));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Envía una respuesta a Kommo a través de la Chats API de Canales Propios.
+ * Endpoint y firma según la documentación oficial:
+ * https://developers.kommo.com/reference/send-import-messages
+ * https://developers.kommo.com/recipes/calculate-headers-for-chats-api-requests
+ *
+ * El dominio del gateway de chats es siempre amojo.kommo.com (no el subdominio
+ * de la cuenta): KOMMO_INTEGRATION_ID es el scope_id del canal y
+ * KOMMO_CLIENT_SECRET es el secreto entregado al registrar el canal.
+ */
+export async function sendKommoReply(message, conversationId, env) {
+  const secret = env.KOMMO_CLIENT_SECRET;
+  const scopeId = env.KOMMO_INTEGRATION_ID;
+
+  if (!secret || !scopeId || !conversationId) {
+    console.warn('[kommo] Faltan KOMMO_CLIENT_SECRET, KOMMO_INTEGRATION_ID o conversationId. Saltando envío.');
     return { ok: false, error: 'Configuración incompleta' };
   }
 
-  const subdomain = rawSubdomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  // Kommo usa amocrm.com para la API
-  const domain = subdomain.includes('amocrm.com') ? subdomain :
-                 subdomain.replace('kommo.com', 'amocrm.com');
-  const accountUrl = `https://${domain}`;
+  const method = 'POST';
+  const contentType = 'application/json';
+  const path = `/v2/origin/custom/${scopeId}`;
+  const url = `https://amojo.kommo.com${path}`;
+  const date = new Date().toUTCString();
+
+  const now = Date.now();
+  const bodyObj = {
+    event_type: 'new_message',
+    payload: {
+      timestamp: Math.floor(now / 1000),
+      msec_timestamp: now,
+      msgid: crypto.randomUUID(),
+      conversation_id: conversationId,
+      sender: {
+        id: 'bot',
+        name: 'Asistente AI',
+      },
+      message: {
+        type: 'text',
+        text: message,
+      },
+      silent: false,
+    },
+  };
+
+  const bodyStr = JSON.stringify(bodyObj);
+  const contentMD5 = getMD5(bodyStr);
+
+  // Orden de la firma según la documentación: METHOD, Content-MD5, Content-Type, Date, Path
+  const stringToSign = [method, contentMD5, contentType, date, path].join('\n');
+  const signature = await getHMACSHA1(secret, stringToSign);
 
   try {
-    // 1) Obtener sesión de chats
-    const session = await getChatSession(accountUrl, token);
-    const chatAccessToken = session.access_token;
-    const accountId = session.account?.id;
-    const userName = session.user?.name || 'Asistente AI';
-    const userAvatar = session.user?.avatar || '';
-
-    console.log(`[kommo] chat session OK, accountId: ${accountId}, chatId: ${chatId}`);
-
-    // 2) Enviar mensaje
-    const url = `https://amojo.kommo.com/v1/chats/${accountId}/${chatId}/messages`;
-    console.log(`[kommo] URL: ${url}`);
-
-    const bodyParams = new URLSearchParams({
-      silent: 'false',
-      priority: 'low',
-      persona_name: userName,
-      persona_avatar: userAvatar,
-      text: message,
-      skip_link_shortener: 'false',
-    });
-
-    // Añadir campos del webhook si están disponibles
-    if (webhookParams) {
-      if (webhookParams.entity_id) bodyParams.set('crm_entity[id]', webhookParams.entity_id);
-      if (webhookParams.element_type) bodyParams.set('crm_entity[type]', webhookParams.element_type);
-      if (webhookParams.author_id) bodyParams.set('recipient_id', webhookParams.author_id);
-      if (webhookParams.talk_id) bodyParams.set('crm_dialog_id', webhookParams.talk_id);
-      if (webhookParams.contact_id) bodyParams.set('crm_contact_id', webhookParams.contact_id);
-      if (webhookParams.account_id) bodyParams.set('crm_account_id', webhookParams.account_id);
-    }
-
     const response = await fetch(url, {
-      method: 'POST',
+      method,
       headers: {
-        'X-Requested-With': 'XMLHttpRequest',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'X-Auth-Token': chatAccessToken,
-        'chatId': chatId,
+        'Content-Type': contentType,
+        'Date': date,
+        'Content-MD5': contentMD5,
+        'X-Signature': signature,
       },
-      body: bodyParams.toString(),
+      body: bodyStr,
     });
 
     const responseText = await response.text();
