@@ -52,6 +52,46 @@ describe("Worker chatbot endpoint", () => {
 		expect(data.kommo).toHaveProperty("hasSecret");
 	});
 
+	it("rejects /oauth/callback without a code", async () => {
+		const request = new IncomingRequest("http://example.com/oauth/callback", {
+			method: "GET"
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(request, env, ctx);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(400);
+	});
+
+	it("exchanges the code for tokens and stores them on /oauth/callback", async () => {
+		globalThis.fetch = vi.fn().mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				access_token: "new-access-token",
+				refresh_token: "new-refresh-token",
+				expires_in: 86400,
+			}),
+		}) as unknown as typeof fetch;
+
+		const request = new IncomingRequest("http://example.com/oauth/callback?code=abc123", {
+			method: "GET"
+		});
+		const ctx = createExecutionContext();
+		const response = await worker.fetch(
+			request,
+			{ ...env, KOMMO_SUBDOMAIN: "test", KOMMO_INTEGRATION_ID: "i", KOMMO_CLIENT_SECRET: "s" },
+			ctx,
+		);
+		await waitOnExecutionContext(ctx);
+
+		expect(response.status).toBe(200);
+		const stored = await env.KOMMO_OAUTH.get("kommo_oauth_tokens");
+		expect(JSON.parse(stored!)).toMatchObject({
+			access_token: "new-access-token",
+			refresh_token: "new-refresh-token",
+		});
+	});
+
 	it("returns success on /kommo-test and handles subdomain", async () => {
 		globalThis.fetch = vi.fn().mockImplementation((url) => {
 			if (url === "https://test.kommo.com/api/v4/account") {
@@ -104,11 +144,34 @@ describe("Worker chatbot endpoint", () => {
 	});
 
 	it("returns success on /kommo-send-test", async () => {
-		// sendKommoReply firma el cuerpo (HMAC-SHA1) y lo envía a amojo.kommo.com en una sola llamada fetch
-		globalThis.fetch = vi.fn().mockResolvedValue({
-			ok: true,
-			text: async () => "OK",
-		}) as unknown as typeof fetch;
+		// sendKommoReply necesita un access_token OAuth vigente guardado en KV
+		await env.KOMMO_OAUTH.put("kommo_oauth_tokens", JSON.stringify({
+			access_token: "oauth-access-token",
+			refresh_token: "oauth-refresh-token",
+			expires_at: Date.now() + 60_000,
+		}));
+
+		// Primera llamada abre la sesión de chat (/ajax/v1/chats/session), segunda envía el mensaje
+		globalThis.fetch = vi
+			.fn()
+			.mockResolvedValueOnce({
+				ok: true,
+				json: async () => ({
+					response: {
+						chats: {
+							session: {
+								access_token: "session-token",
+								account: { id: 999 },
+								user: { name: "Bot" },
+							},
+						},
+					},
+				}),
+			})
+			.mockResolvedValueOnce({
+				ok: true,
+				text: async () => "OK",
+			}) as unknown as typeof fetch;
 
 		const payload = { conversationId: "c1", message: "hello" };
 		const request = new IncomingRequest("http://example.com/kommo-send-test", {
@@ -117,7 +180,7 @@ describe("Worker chatbot endpoint", () => {
 			body: JSON.stringify(payload)
 		});
 		const ctx = createExecutionContext();
-		const response = await worker.fetch(request, { ...env, KOMMO_CLIENT_SECRET: "s", KOMMO_INTEGRATION_ID: "i" }, ctx);
+		const response = await worker.fetch(request, { ...env, KOMMO_SUBDOMAIN: "d" }, ctx);
 		await waitOnExecutionContext(ctx);
 
 		expect(response.status).toBe(200);

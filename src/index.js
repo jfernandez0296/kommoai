@@ -2,6 +2,7 @@ import { routeRequest, processUserMessage } from './router.js';
 import { saveConversationTurn } from './memory/conversationMemory.js';
 import { normalizeText, sanitizeInput } from './utils/helpers.js';
 import { sendKommoReply } from './services/kommo.js';
+import { exchangeCodeForTokens } from './services/kommoAuth.js';
 
 let LAST_WEBHOOK = null;
 
@@ -30,6 +31,30 @@ export default {
           hasSecret: !!env.KOMMO_CLIENT_SECRET,
         },
       }, { headers: corsHeaders });
+    }
+
+    // ── Autorización OAuth de Kommo: GET /oauth/start ──────────────────────
+    // Paso único y manual: redirige a la pantalla de Kommo para autorizar la integración.
+    if (request.method === 'GET' && url.pathname === '/oauth/start') {
+      const state = crypto.randomUUID();
+      const authorizeUrl = `https://www.kommo.com/oauth?client_id=${encodeURIComponent(env.KOMMO_INTEGRATION_ID)}&state=${state}&mode=post_message`;
+      return Response.redirect(authorizeUrl, 302);
+    }
+
+    // ── Callback OAuth de Kommo: GET /oauth/callback ───────────────────────
+    // Kommo redirige aquí con ?code=... tras la autorización manual.
+    if (request.method === 'GET' && url.pathname === '/oauth/callback') {
+      const code = url.searchParams.get('code');
+      if (!code) {
+        return Response.json({ error: 'Falta el parámetro code' }, { status: 400, headers: corsHeaders });
+      }
+      try {
+        const redirectUri = `${url.origin}/oauth/callback`;
+        await exchangeCodeForTokens(env, code, redirectUri);
+        return new Response('Autorización completada. Ya puedes cerrar esta ventana.', { headers: corsHeaders });
+      } catch (error) {
+        return Response.json({ error: String(error) }, { status: 500, headers: corsHeaders });
+      }
     }
 
     // ── Diagnóstico de webhooks: POST /webhook-test ────────────────────────
@@ -110,6 +135,9 @@ export default {
       // Tipo de mensaje: 1=entrante (del cliente), 2=saliente (del agente)
       const direction = params.get('message[add][0][type]') || '';
 
+      // Dominio real de la cuenta (ej. https://miempresa.amocrm.com), lo manda Kommo en cada webhook
+      const accountSelfLink = params.get('account[_links][self]') || '';
+
       console.log(`messageText: "${messageText}", conversationId: "${conversationId}", direction: "${direction}"`);
       console.log('Todos los params:', [...params.entries()].map(([k,v]) => `${k}=${v}`).join(' | '));
 
@@ -133,7 +161,7 @@ export default {
       try {
         const result = await processUserMessage(message, env, ctx);
         saveConversationTurn(message, result.reply, { route: 'webhook', handoff: result.handoff });
-        ctx.waitUntil(sendKommoReply(result.reply, conversationId, env));
+        ctx.waitUntil(sendKommoReply(result.reply, conversationId, env, accountSelfLink));
         return Response.json({ ok: true, reply: result.reply }, { headers: corsHeaders });
       } catch (error) {
         console.error('[webhook] Error procesando mensaje:', error);

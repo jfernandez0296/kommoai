@@ -5,6 +5,12 @@
 	"vars": {
 		"WORKER_URL": "https://kommo-ai.jfernandezc.workers.dev"
 	},
+	"kv_namespaces": [
+		{
+			"binding": "KOMMO_OAUTH",
+			"id": "7e5b79ae8b2b45a89c8d9e25e76af4c7"
+		}
+	],
 	"observability": {
 		"enabled": true
 	}
