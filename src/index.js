@@ -149,7 +149,7 @@ export default {
       try {
         const text = await request.text();
         params = new URLSearchParams(text);
-        console.log('WEBHOOK RAW:', text.substring(0, 500));
+        console.log('WEBHOOK RAW:', text.substring(0, 3000));
       } catch (e) {
         return Response.json({ error: 'Error leyendo body' }, { status: 400, headers: corsHeaders });
       }
