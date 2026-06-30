@@ -28,15 +28,24 @@ async function getChatSession(accountUrl, token) {
   return session;
 }
 
+/**
+ * El endpoint /ajax/v1/chats/session solo es accesible desde el dominio
+ * .kommo.com de la cuenta (el mismo dominio donde vive la sesión OAuth),
+ * no desde el dominio público .amocrm.com del panel de ventas.
+ * Si `accountSelfLink` llega con dominio amocrm.com (como lo manda Kommo en
+ * cada webhook), extraemos el subdominio y reconstruimos con kommo.com.
+ */
 function resolveAccountUrl(env, accountSelfLink) {
-  if (accountSelfLink) return accountSelfLink;
+  if (accountSelfLink) {
+    const host = accountSelfLink.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const sub = host.split('.')[0];
+    return `https://${sub}.kommo.com`;
+  }
 
   const rawSubdomain = env.KOMMO_SUBDOMAIN;
   if (!rawSubdomain) throw new Error('Falta configurar KOMMO_SUBDOMAIN');
-  const subdomain = rawSubdomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  // Kommo usa el dominio amocrm.com para este endpoint interno
-  const domain = subdomain.includes('amocrm.com') ? subdomain : subdomain.replace('kommo.com', 'amocrm.com');
-  return `https://${domain}`;
+  const subdomain = rawSubdomain.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
+  return `https://${subdomain}`;
 }
 
 /**
@@ -45,8 +54,8 @@ function resolveAccountUrl(env, accountSelfLink) {
  * 2. POST amojo.kommo.com/v1/chats/{account_id}/{chat_id}/messages
  *
  * `accountSelfLink` es el campo `account[_links][self]` que Kommo manda en
- * cada webhook (ej. https://miempresa.amocrm.com); si está disponible se usa
- * directamente en vez de adivinar el dominio a partir de KOMMO_SUBDOMAIN.
+ * cada webhook (ej. https://miempresa.amocrm.com); de ahí se extrae el
+ * subdominio para construir la URL .kommo.com usada en getChatSession.
  */
 export async function sendKommoReply(message, chatId, env, accountSelfLink) {
   if (!chatId) {
