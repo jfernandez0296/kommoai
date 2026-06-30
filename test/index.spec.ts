@@ -151,29 +151,15 @@ describe("Worker chatbot endpoint", () => {
 			expires_at: Date.now() + 60_000,
 		}));
 
-		// Primera llamada abre la sesión de chat (/ajax/v1/chats/session), segunda envía el mensaje
-		globalThis.fetch = vi
+		// Primera llamada escribe el campo kommon8n del lead (PATCH /api/v4/leads/{id}),
+		// segunda dispara el Salesbot (POST /api/v4/bots/{id}/run)
+		const fetchMock = vi
 			.fn()
-			.mockResolvedValueOnce({
-				ok: true,
-				json: async () => ({
-					response: {
-						chats: {
-							session: {
-								access_token: "session-token",
-								account: { id: 999 },
-								user: { name: "Bot" },
-							},
-						},
-					},
-				}),
-			})
-			.mockResolvedValueOnce({
-				ok: true,
-				text: async () => "OK",
-			}) as unknown as typeof fetch;
+			.mockResolvedValueOnce({ ok: true, text: async () => "{}" })
+			.mockResolvedValueOnce({ ok: true, text: async () => "Accepted" });
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-		const payload = { conversationId: "c1", message: "hello" };
+		const payload = { conversationId: "12345", message: "hello" };
 		const request = new IncomingRequest("http://example.com/kommo-send-test", {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -186,6 +172,14 @@ describe("Worker chatbot endpoint", () => {
 		expect(response.status).toBe(200);
 		const data = await response.json();
 		expect(data).toMatchObject({ ok: true });
+
+		const [fieldUrl, fieldInit] = fetchMock.mock.calls[0];
+		expect(fieldUrl).toBe("https://d.kommo.com/api/v4/leads/12345");
+		expect(fieldInit.method).toBe("PATCH");
+
+		const [botUrl, botInit] = fetchMock.mock.calls[1];
+		expect(botUrl).toBe("https://d.kommo.com/api/v4/bots/17570/run");
+		expect(JSON.parse(botInit.body)).toMatchObject({ entity_id: 12345, entity_type: "leads" });
 	});
 
 	it("echoes the body on /webhook-test and saves it to /last-webhook", async () => {

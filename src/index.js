@@ -2,7 +2,7 @@ import { routeRequest, processUserMessage } from './router.js';
 import { saveConversationTurn } from './memory/conversationMemory.js';
 import { normalizeText, sanitizeInput } from './utils/helpers.js';
 import { sendKommoReply } from './services/kommo.js';
-import { exchangeCodeForTokens } from './services/kommoAuth.js';
+import { exchangeCodeForTokens, getValidAccessToken } from './services/kommoAuth.js';
 
 let LAST_WEBHOOK = null;
 
@@ -90,6 +90,38 @@ export default {
       }
     }
 
+    // ── Diagnóstico temporal: GET /kommo-fields-test ───────────────────────
+    // Lista los campos personalizados de leads y contactos vía API v4 con el
+    // token OAuth, para identificar el campo que usa el Salesbot existente.
+    if (request.method === 'GET' && url.pathname === '/kommo-fields-test') {
+      try {
+        const rawSubdomain = env.KOMMO_SUBDOMAIN;
+        const subdomain = rawSubdomain?.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
+        const token = await getValidAccessToken(env);
+
+        const [leadsRes, contactsRes] = await Promise.all([
+          fetch(`https://${subdomain}/api/v4/leads/custom_fields?limit=250`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch(`https://${subdomain}/api/v4/contacts/custom_fields?limit=250`, {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+
+        const leadsBody = leadsRes.ok ? await leadsRes.json() : await leadsRes.text();
+        const contactsBody = contactsRes.ok ? await contactsRes.json() : await contactsRes.text();
+
+        const simplify = (body) => body?._embedded?.custom_fields?.map(f => ({ id: f.id, name: f.name, type: f.type })) || body;
+
+        return Response.json({
+          leads: { status: leadsRes.status, fields: simplify(leadsBody) },
+          contacts: { status: contactsRes.status, fields: simplify(contactsBody) },
+        }, { headers: corsHeaders });
+      } catch (error) {
+        return Response.json({ success: false, error: String(error) }, { status: 500, headers: corsHeaders });
+      }
+    }
+
     // ── Test conexión Kommo: GET /kommo-test ───────────────────────────────
     if (request.method === 'GET' && url.pathname === '/kommo-test') {
       const rawSubdomain = env.KOMMO_SUBDOMAIN;
@@ -124,21 +156,18 @@ export default {
 
       // Kommo envía los mensajes entrantes en message[add][0][*]
       // y los mensajes salientes en message[add][0][*] también pero con flag
-      // Extraemos el texto y el conversation_id (chat_id en Kommo)
-      const messageText = params.get('message[add][0][text]') || 
+      const messageText = params.get('message[add][0][text]') ||
                           params.get('message[0][text]') || '';
-      
-      // chat_id UUID necesario para la Chat API de amojo.kommo.com
-      const conversationId = params.get('message[add][0][chat_id]') ||
-                             params.get('chat_id') || '';
+
+      // ID del lead al que pertenece la conversación: lo usa el Salesbot
+      // (POST /api/v4/bots/{id}/run) para saber a quién responder.
+      const leadId = params.get('message[add][0][entity_id]') ||
+                     params.get('message[add][0][element_id]') || '';
 
       // Tipo de mensaje: 1=entrante (del cliente), 2=saliente (del agente)
       const direction = params.get('message[add][0][type]') || '';
 
-      // Dominio real de la cuenta (ej. https://miempresa.amocrm.com), lo manda Kommo en cada webhook
-      const accountSelfLink = params.get('account[_links][self]') || '';
-
-      console.log(`messageText: "${messageText}", conversationId: "${conversationId}", direction: "${direction}"`);
+      console.log(`messageText: "${messageText}", leadId: "${leadId}", direction: "${direction}"`);
       console.log('Todos los params:', [...params.entries()].map(([k,v]) => `${k}=${v}`).join(' | '));
 
       // Si es mensaje saliente (enviado por un agente/bot), ignoramos para evitar loop
@@ -152,16 +181,16 @@ export default {
         return Response.json({ ok: true, skipped: true, reason: 'Mensaje vacío' }, { headers: corsHeaders });
       }
 
-      if (!conversationId) {
-        console.warn('[webhook] No se encontró conversation_id/talk_id en el payload');
+      if (!leadId) {
+        console.warn('[webhook] No se encontró leadId (entity_id) en el payload');
         // Respondemos 200 para que Kommo no reintente, pero logueamos el problema
-        return Response.json({ ok: false, error: 'conversation_id no encontrado', hint: 'Revisar logs para ver params recibidos' }, { headers: corsHeaders });
+        return Response.json({ ok: false, error: 'leadId no encontrado', hint: 'Revisar logs para ver params recibidos' }, { headers: corsHeaders });
       }
 
       try {
         const result = await processUserMessage(message, env, ctx);
         saveConversationTurn(message, result.reply, { route: 'webhook', handoff: result.handoff });
-        ctx.waitUntil(sendKommoReply(result.reply, conversationId, env, accountSelfLink));
+        ctx.waitUntil(sendKommoReply(result.reply, leadId, env));
         return Response.json({ ok: true, reply: result.reply }, { headers: corsHeaders });
       } catch (error) {
         console.error('[webhook] Error procesando mensaje:', error);
