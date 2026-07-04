@@ -2,6 +2,8 @@ import { getValidAccessToken } from './kommoAuth.js';
 
 // Campo personalizado del lead "kommon8n" donde el Salesbot lee la respuesta a enviar.
 const REPLY_FIELD_ID = 648586;
+// Campo personalizado "botactivo" (select SI/NO) que controla si el bot debe responder.
+const BOT_ACTIVE_FIELD_ID = 650774;
 // ID del Salesbot (Configuración → Salesbot en Kommo) que envía el mensaje al chat
 // leyendo el campo de arriba.
 const SALESBOT_ID = 17570;
@@ -10,6 +12,57 @@ function resolveSubdomain(env) {
   const rawSubdomain = env.KOMMO_SUBDOMAIN;
   if (!rawSubdomain) throw new Error('Falta configurar KOMMO_SUBDOMAIN');
   return rawSubdomain.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
+}
+
+/**
+ * Consulta el campo "botactivo" del lead y devuelve true solo si vale "SI".
+ * Si el campo no existe, el lead no se puede leer o el valor es distinto, devuelve false.
+ */
+export async function isBotActive(leadId, env) {
+  if (!leadId) return false;
+  try {
+    const subdomain = resolveSubdomain(env);
+    const token = await getValidAccessToken(env);
+    const res = await fetch(`https://${subdomain}/api/v4/leads/${leadId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const fields = data.custom_fields_values || [];
+    const botField = fields.find(f => f.field_id === BOT_ACTIVE_FIELD_ID);
+    const val = botField?.values?.[0]?.value || '';
+    return val.toUpperCase() === 'SI';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Pone el campo "botactivo" en NO para que el worker deje de responder a este lead.
+ * Se llama cuando el usuario pide hablar con un humano.
+ */
+export async function setBotInactive(leadId, env) {
+  if (!leadId) return;
+  try {
+    const subdomain = resolveSubdomain(env);
+    const token = await getValidAccessToken(env);
+    const res = await fetch(`https://${subdomain}/api/v4/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        custom_fields_values: [
+          { field_id: BOT_ACTIVE_FIELD_ID, values: [{ value: 'NO' }] },
+        ],
+      }),
+    });
+    if (!res.ok) throw new Error(`set botactivo error: ${res.status} ${await res.text()}`);
+    console.log(`[kommo] botactivo → NO para lead ${leadId}`);
+  } catch (error) {
+    console.error('[kommo] Error al desactivar bot:', error);
+  }
 }
 
 /**

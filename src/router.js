@@ -71,7 +71,8 @@ export async function processUserMessage(message, env, ctx) {
     };
   }
 
-  // Si el usuario pide una imagen, devolvemos la respuesta visual sin llamar a la IA.
+  // Si el usuario pregunta por los planes, escribimos "plan" en el campo de Kommo
+  // para que el Salesbot procese y envíe la información de planes al chat.
   const lowerText = text.toLowerCase();
   if (
     lowerText.includes("plan") ||
@@ -82,7 +83,7 @@ export async function processUserMessage(message, env, ctx) {
     lowerText.includes("muéstrame")
   ) {
     return {
-      reply: "Te comparto la imagen de nuestros planes.",
+      reply: "plan",
       handoff: false,
       imageUrl: BUSINESS.images.planGeneral,
       provider: "system"

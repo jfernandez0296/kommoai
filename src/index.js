@@ -1,7 +1,7 @@
 import { routeRequest, processUserMessage } from './router.js';
 import { saveConversationTurn } from './memory/conversationMemory.js';
 import { normalizeText, sanitizeInput } from './utils/helpers.js';
-import { sendKommoReply } from './services/kommo.js';
+import { sendKommoReply, isBotActive, setBotInactive } from './services/kommo.js';
 import { exchangeCodeForTokens, getValidAccessToken } from './services/kommoAuth.js';
 
 let LAST_WEBHOOK = null;
@@ -175,6 +175,15 @@ export default {
         return Response.json({ ok: true, skipped: true, reason: 'Mensaje saliente ignorado' }, { headers: corsHeaders });
       }
 
+      // Verificar si el bot está activo para este lead antes de procesar
+      if (leadId) {
+        const active = await isBotActive(leadId, env);
+        if (!active) {
+          console.log(`[webhook] Bot inactivo para lead ${leadId}, ignorando mensaje`);
+          return Response.json({ ok: true, skipped: true, reason: 'Bot inactivo' }, { headers: corsHeaders });
+        }
+      }
+
       const message = sanitizeInput(normalizeText(messageText));
 
       if (!message) {
@@ -191,6 +200,9 @@ export default {
         const result = await processUserMessage(message, env, ctx);
         saveConversationTurn(message, result.reply, { route: 'webhook', handoff: result.handoff });
         ctx.waitUntil(sendKommoReply(result.reply, leadId, env));
+        if (result.handoff) {
+          ctx.waitUntil(setBotInactive(leadId, env));
+        }
         return Response.json({ ok: true, reply: result.reply }, { headers: corsHeaders });
       } catch (error) {
         console.error('[webhook] Error procesando mensaje:', error);
