@@ -1,5 +1,5 @@
 import { processUserMessage } from './router.js';
-import { normalizeText, sanitizeInput } from './utils/helpers.js';
+import { normalizeText, sanitizeInput, resolveKommoSubdomain } from './utils/helpers.js';
 import { sendKommoReply, isBotActive, setBotInactive } from './services/kommo.js';
 import { exchangeCodeForTokens, getValidAccessToken } from './services/kommoAuth.js';
 
@@ -102,8 +102,7 @@ export default {
     // ── Diagnóstico temporal: GET /kommo-fields-test ───────────────────────
     if (request.method === 'GET' && url.pathname === '/kommo-fields-test') {
       try {
-        const rawSubdomain = env.KOMMO_SUBDOMAIN;
-        const subdomain = rawSubdomain?.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
+        const subdomain = resolveKommoSubdomain(env);
         const token = await getValidAccessToken(env);
 
         const [leadsRes, contactsRes] = await Promise.all([
@@ -131,10 +130,9 @@ export default {
 
     // ── Test conexión Kommo: GET /kommo-test ───────────────────────────────
     if (request.method === 'GET' && url.pathname === '/kommo-test') {
-      const rawSubdomain = env.KOMMO_SUBDOMAIN;
-      const subdomain = rawSubdomain?.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
       try {
-        const token = env.KOMMO_ACCESS_TOKEN;
+        const subdomain = resolveKommoSubdomain(env);
+        const token = await getValidAccessToken(env);
         const res = await fetch(`https://${subdomain}/api/v4/account`, {
           headers: { Authorization: `Bearer ${token}` },
         });

@@ -1,14 +1,9 @@
 import { getValidAccessToken } from './kommoAuth.js';
+import { resolveKommoSubdomain } from '../utils/helpers.js';
 
 const REPLY_FIELD_ID = 648586;
 const BOT_ACTIVE_FIELD_ID = 650774;
 const SALESBOT_ID = 17570;
-
-function resolveSubdomain(env) {
-  const rawSubdomain = env.KOMMO_SUBDOMAIN;
-  if (!rawSubdomain) throw new Error('Falta configurar KOMMO_SUBDOMAIN');
-  return rawSubdomain.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
-}
 
 /**
  * Consulta el campo "botactivo" del lead.
@@ -17,7 +12,7 @@ function resolveSubdomain(env) {
 export async function isBotActive(leadId, env) {
   if (!leadId) return { active: false };
   try {
-    const subdomain = resolveSubdomain(env);
+    const subdomain = resolveKommoSubdomain(env);
     const token = await getValidAccessToken(env);
     const res = await fetch(`https://${subdomain}/api/v4/leads/${leadId}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -44,7 +39,7 @@ export async function isBotActive(leadId, env) {
 export async function setBotInactive(leadId, env, auth = {}) {
   if (!leadId) return;
   try {
-    const subdomain = auth.subdomain || resolveSubdomain(env);
+    const subdomain = auth.subdomain || resolveKommoSubdomain(env);
     const token = auth.token || await getValidAccessToken(env);
     const res = await fetch(`https://${subdomain}/api/v4/leads/${leadId}`, {
       method: 'PATCH',
@@ -104,7 +99,7 @@ export async function sendKommoReply(message, leadId, env, auth = {}) {
   }
 
   try {
-    const subdomain = auth.subdomain || resolveSubdomain(env);
+    const subdomain = auth.subdomain || resolveKommoSubdomain(env);
     const token = auth.token || await getValidAccessToken(env);
 
     await setReplyField(subdomain, token, leadId, message);

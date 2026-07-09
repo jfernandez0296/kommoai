@@ -1,14 +1,10 @@
+import { resolveKommoSubdomain } from '../utils/helpers.js';
+
 const TOKEN_KEY = 'kommo_oauth_tokens';
 const EXPIRY_BUFFER_MS = 60_000;
 
-function tokenSubdomain(env) {
-  const rawSubdomain = env.KOMMO_SUBDOMAIN;
-  if (!rawSubdomain) throw new Error('Falta configurar KOMMO_SUBDOMAIN');
-  return rawSubdomain.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
-}
-
 async function exchangeToken(env, body) {
-  const subdomain = tokenSubdomain(env);
+  const subdomain = resolveKommoSubdomain(env);
   const res = await fetch(`https://${subdomain}/oauth2/access_token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -33,10 +29,6 @@ async function saveTokens(env, tokens) {
   return record;
 }
 
-/**
- * Intercambia el código de autorización (paso único, manual) por el primer
- * par access_token/refresh_token y lo guarda en KV.
- */
 export async function exchangeCodeForTokens(env, code, redirectUri) {
   const tokens = await exchangeToken(env, {
     client_id: env.KOMMO_INTEGRATION_ID,
@@ -48,17 +40,19 @@ export async function exchangeCodeForTokens(env, code, redirectUri) {
   return saveTokens(env, tokens);
 }
 
-/**
- * Devuelve un access_token vigente, renovándolo con el refresh_token
- * guardado si ya venció. Lanza un error si nunca se hizo la autorización inicial.
- */
 export async function getValidAccessToken(env) {
   const raw = await env.KOMMO_OAUTH.get(TOKEN_KEY);
   if (!raw) {
     throw new Error('No hay token de Kommo autorizado todavía. Visita /oauth/start para autorizarlo.');
   }
 
-  const record = JSON.parse(raw);
+  let record;
+  try {
+    record = JSON.parse(raw);
+  } catch {
+    throw new Error('Token almacenado en KV está corrupto. Visita /oauth/start para reautorizar.');
+  }
+
   if (Date.now() < record.expires_at) {
     return record.access_token;
   }
