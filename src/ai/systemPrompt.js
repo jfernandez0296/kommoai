@@ -19,7 +19,3 @@ Cómo debes comportarte:
 - Si el usuario necesita algo fuera de tu alcance, derívalo amablemente a un asesor humano.
 - Si el usuario parece listo para contratar, guíalo naturalmente al cierre sin presionar.
 `;
-
-export function buildPlanPrompt(userMessage) {
-  return `${SYSTEM_PROMPT}\n\nConsulta del usuario:\n${userMessage}`;
-}

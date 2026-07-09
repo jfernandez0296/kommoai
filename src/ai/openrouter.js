@@ -1,6 +1,6 @@
-import { config } from '../config.js';
+import { SYSTEM_PROMPT } from './systemPrompt.js';
 
-export async function askOpenRouter(prompt, env) {
+export async function askOpenRouter(userMessage, env) {
   const hasOpenRouterKey = Boolean(env?.OPENROUTER_API_KEY);
   console.log(`OPENROUTER_API_KEY presente: ${hasOpenRouterKey}`);
 
@@ -8,19 +8,22 @@ export async function askOpenRouter(prompt, env) {
     throw new Error('Falta configurar OPENROUTER_API_KEY');
   }
 
-  const model = env?.OPENROUTER_MODEL ?? config.defaultModel ?? 'openai/gpt-4o-mini';
+  const model = env?.OPENROUTER_MODEL ?? 'openai/gpt-4o-mini';
   const workerUrl = env?.WORKER_URL || 'https://kommo-ai.jfernandezc.workers.dev';
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${env?.OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',
       'HTTP-Referer': workerUrl,
       'X-Title': 'Kommo AI Worker',
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userMessage },
+      ],
     }),
   });
 
@@ -30,5 +33,7 @@ export async function askOpenRouter(prompt, env) {
   }
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content ?? 'No response from OpenRouter.';
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error('OpenRouter devolvió respuesta vacía');
+  return content;
 }

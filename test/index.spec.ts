@@ -282,7 +282,7 @@ describe("Worker chatbot endpoint", () => {
 
 		expect(await response.json()).toMatchObject({
 			reply: "Respuesta de OpenRouter",
-			handoff: true,
+			handoff: false,
 			imageUrl: null,
 			provider: "openrouter",
 		});
@@ -359,7 +359,7 @@ describe("Worker chatbot endpoint", () => {
 
 		expect(await response.json()).toMatchObject({
 			reply: "Respuesta de OpenRouter",
-			handoff: true,
+			handoff: false,
 			imageUrl: null,
 			provider: "openrouter",
 		});

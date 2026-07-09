@@ -1,10 +1,17 @@
-import { routeRequest, processUserMessage } from './router.js';
-import { saveConversationTurn } from './memory/conversationMemory.js';
+import { processUserMessage } from './router.js';
 import { normalizeText, sanitizeInput } from './utils/helpers.js';
 import { sendKommoReply, isBotActive, setBotInactive } from './services/kommo.js';
 import { exchangeCodeForTokens, getValidAccessToken } from './services/kommoAuth.js';
 
 let LAST_WEBHOOK = null;
+
+function requireAdmin(request, env) {
+  const secret = env.ADMIN_SECRET;
+  if (!secret) return null; // no configurado → acceso libre (backwards compatible)
+  const auth = request.headers.get('Authorization') || '';
+  if (auth === `Bearer ${secret}`) return null;
+  return new Response(JSON.stringify({ error: 'No autorizado' }), { status: 401 });
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -22,6 +29,8 @@ export default {
 
     // ── Debug: GET /debug ──────────────────────────────────────────────────
     if (request.method === 'GET' && url.pathname === '/debug') {
+      const denied = requireAdmin(request, env);
+      if (denied) return denied;
       return Response.json({
         kommo: {
           subdomain: env.KOMMO_SUBDOMAIN,
@@ -34,7 +43,6 @@ export default {
     }
 
     // ── Autorización OAuth de Kommo: GET /oauth/start ──────────────────────
-    // Paso único y manual: redirige a la pantalla de Kommo para autorizar la integración.
     if (request.method === 'GET' && url.pathname === '/oauth/start') {
       const state = crypto.randomUUID();
       const authorizeUrl = `https://www.kommo.com/oauth?client_id=${encodeURIComponent(env.KOMMO_INTEGRATION_ID)}&state=${state}&mode=post_message`;
@@ -42,7 +50,6 @@ export default {
     }
 
     // ── Callback OAuth de Kommo: GET /oauth/callback ───────────────────────
-    // Kommo redirige aquí con ?code=... tras la autorización manual.
     if (request.method === 'GET' && url.pathname === '/oauth/callback') {
       const code = url.searchParams.get('code');
       if (!code) {
@@ -80,6 +87,8 @@ export default {
 
     // ── Prueba de envío a Kommo: POST /kommo-send-test ─────────────────────
     if (request.method === 'POST' && url.pathname === '/kommo-send-test') {
+      const denied = requireAdmin(request, env);
+      if (denied) return denied;
       try {
         const body = await request.json();
         const { conversationId, message } = body;
@@ -91,8 +100,6 @@ export default {
     }
 
     // ── Diagnóstico temporal: GET /kommo-fields-test ───────────────────────
-    // Lista los campos personalizados de leads y contactos vía API v4 con el
-    // token OAuth, para identificar el campo que usa el Salesbot existente.
     if (request.method === 'GET' && url.pathname === '/kommo-fields-test') {
       try {
         const rawSubdomain = env.KOMMO_SUBDOMAIN;
@@ -125,9 +132,9 @@ export default {
     // ── Test conexión Kommo: GET /kommo-test ───────────────────────────────
     if (request.method === 'GET' && url.pathname === '/kommo-test') {
       const rawSubdomain = env.KOMMO_SUBDOMAIN;
-      const token = env.KOMMO_ACCESS_TOKEN;
       const subdomain = rawSubdomain?.includes('.') ? rawSubdomain : `${rawSubdomain}.kommo.com`;
       try {
+        const token = env.KOMMO_ACCESS_TOKEN;
         const res = await fetch(`https://${subdomain}/api/v4/account`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -143,8 +150,13 @@ export default {
     }
 
     // ── WEBHOOK de Kommo: POST /webhook ────────────────────────────────────
-    // Kommo envía application/x-www-form-urlencoded, NO JSON
     if (request.method === 'POST' && (url.pathname === '/' || url.pathname === '/webhook')) {
+      // Validación de token secreto en la URL si está configurado
+      const webhookSecret = env.WEBHOOK_SECRET;
+      if (webhookSecret && url.searchParams.get('token') !== webhookSecret) {
+        return new Response('Forbidden', { status: 403 });
+      }
+
       let params;
       try {
         const text = await request.text();
@@ -154,63 +166,55 @@ export default {
         return Response.json({ error: 'Error leyendo body' }, { status: 400, headers: corsHeaders });
       }
 
-      // Kommo envía los mensajes entrantes en message[add][0][*]
-      // y los mensajes salientes en message[add][0][*] también pero con flag
       const messageText = params.get('message[add][0][text]') ||
                           params.get('message[0][text]') || '';
-
-      // ID del lead al que pertenece la conversación: lo usa el Salesbot
-      // (POST /api/v4/bots/{id}/run) para saber a quién responder.
       const leadId = params.get('message[add][0][entity_id]') ||
                      params.get('message[add][0][element_id]') || '';
-
-      // Tipo de mensaje: 1=entrante (del cliente), 2=saliente (del agente)
       const direction = params.get('message[add][0][type]') || '';
 
       console.log(`messageText: "${messageText}", leadId: "${leadId}", direction: "${direction}"`);
-      console.log('Todos los params:', [...params.entries()].map(([k,v]) => `${k}=${v}`).join(' | '));
+      console.log('Todos los params:', [...params.entries()].map(([k, v]) => `${k}=${v}`).join(' | '));
 
-      // Si es mensaje saliente (enviado por un agente/bot), ignoramos para evitar loop
+      // Ignorar mensajes salientes para evitar loop
       if (direction === '2') {
         return Response.json({ ok: true, skipped: true, reason: 'Mensaje saliente ignorado' }, { headers: corsHeaders });
       }
 
-      // Verificar si el bot está activo para este lead antes de procesar
+      // Verificar si el bot está activo para este lead (obtiene auth para reutilizar)
       if (leadId) {
-        const active = await isBotActive(leadId, env);
+        const { active, subdomain, token } = await isBotActive(leadId, env);
         if (!active) {
           console.log(`[webhook] Bot inactivo para lead ${leadId}, ignorando mensaje`);
           return Response.json({ ok: true, skipped: true, reason: 'Bot inactivo' }, { headers: corsHeaders });
         }
+
+        const message = sanitizeInput(normalizeText(messageText));
+        if (!message) {
+          return Response.json({ ok: true, skipped: true, reason: 'Mensaje vacío' }, { headers: corsHeaders });
+        }
+
+        // Responder 200 a Kommo inmediatamente y procesar en background
+        const auth = { subdomain, token };
+        ctx.waitUntil((async () => {
+          try {
+            const result = await processUserMessage(message, env, ctx);
+            await sendKommoReply(result.reply, leadId, env, auth);
+            if (result.handoff) await setBotInactive(leadId, env, auth);
+          } catch (err) {
+            console.error('[webhook] Error en procesamiento background:', err);
+          }
+        })());
+
+        return Response.json({ ok: true }, { headers: corsHeaders });
       }
 
+      // Sin leadId: loguear y responder 200 para que Kommo no reintente
       const message = sanitizeInput(normalizeText(messageText));
-
       if (!message) {
         return Response.json({ ok: true, skipped: true, reason: 'Mensaje vacío' }, { headers: corsHeaders });
       }
-
-      if (!leadId) {
-        console.warn('[webhook] No se encontró leadId (entity_id) en el payload');
-        // Respondemos 200 para que Kommo no reintente, pero logueamos el problema
-        return Response.json({ ok: false, error: 'leadId no encontrado', hint: 'Revisar logs para ver params recibidos' }, { headers: corsHeaders });
-      }
-
-      try {
-        const result = await processUserMessage(message, env, ctx);
-        saveConversationTurn(message, result.reply, { route: 'webhook', handoff: result.handoff });
-        ctx.waitUntil(sendKommoReply(result.reply, leadId, env));
-        if (result.handoff) {
-          ctx.waitUntil(setBotInactive(leadId, env));
-        }
-        return Response.json({ ok: true, reply: result.reply }, { headers: corsHeaders });
-      } catch (error) {
-        console.error('[webhook] Error procesando mensaje:', error);
-        return Response.json(
-          { error: error instanceof Error ? error.message : 'Error procesando mensaje' },
-          { status: 502, headers: corsHeaders }
-        );
-      }
+      console.warn('[webhook] No se encontró leadId (entity_id) en el payload');
+      return Response.json({ ok: false, error: 'leadId no encontrado', hint: 'Revisar logs para ver params recibidos' }, { headers: corsHeaders });
     }
 
     // ── Chat directo (para pruebas con JSON): POST /chat ──────────────────
@@ -230,7 +234,6 @@ export default {
         }
 
         const result = await processUserMessage(message, env, ctx);
-        saveConversationTurn(message, result.reply, { route: 'chat', handoff: result.handoff });
 
         if (conversationId) {
           ctx.waitUntil(sendKommoReply(result.reply, conversationId, env));

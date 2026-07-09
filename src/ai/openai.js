@@ -1,6 +1,6 @@
-import { config } from '../config.js';
+import { SYSTEM_PROMPT } from './systemPrompt.js';
 
-export async function askOpenAI(prompt, env) {
+export async function askOpenAI(userMessage, env) {
   const hasOpenAIKey = Boolean(env?.OPENAI_API_KEY);
   console.log(`OPENAI_API_KEY presente: ${hasOpenAIKey}`);
 
@@ -8,7 +8,7 @@ export async function askOpenAI(prompt, env) {
     throw new Error('Falta configurar OPENAI_API_KEY');
   }
 
-  const model = env?.OPENAI_MODEL ?? config.defaultModel ?? 'gpt-4o-mini';
+  const model = env?.OPENAI_MODEL ?? 'gpt-4o-mini';
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -17,7 +17,10 @@ export async function askOpenAI(prompt, env) {
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userMessage },
+      ],
     }),
   });
 
@@ -27,5 +30,7 @@ export async function askOpenAI(prompt, env) {
   }
 
   const data = await response.json();
-  return data.choices?.[0]?.message?.content ?? 'No response from OpenAI.';
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) throw new Error('OpenAI devolvió respuesta vacía');
+  return content;
 }

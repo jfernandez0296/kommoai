@@ -1,11 +1,7 @@
 import { getValidAccessToken } from './kommoAuth.js';
 
-// Campo personalizado del lead "kommon8n" donde el Salesbot lee la respuesta a enviar.
 const REPLY_FIELD_ID = 648586;
-// Campo personalizado "botactivo" (select SI/NO) que controla si el bot debe responder.
 const BOT_ACTIVE_FIELD_ID = 650774;
-// ID del Salesbot (Configuración → Salesbot en Kommo) que envía el mensaje al chat
-// leyendo el campo de arriba.
 const SALESBOT_ID = 17570;
 
 function resolveSubdomain(env) {
@@ -15,37 +11,41 @@ function resolveSubdomain(env) {
 }
 
 /**
- * Consulta el campo "botactivo" del lead y devuelve true solo si vale "SI".
- * Si el campo no existe, el lead no se puede leer o el valor es distinto, devuelve false.
+ * Consulta el campo "botactivo" del lead.
+ * Devuelve { active, subdomain, token } para reutilizar el auth en llamadas siguientes.
  */
 export async function isBotActive(leadId, env) {
-  if (!leadId) return false;
+  if (!leadId) return { active: false };
   try {
     const subdomain = resolveSubdomain(env);
     const token = await getValidAccessToken(env);
     const res = await fetch(`https://${subdomain}/api/v4/leads/${leadId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      console.warn(`[kommo] isBotActive: GET lead ${leadId} devolvió ${res.status}`);
+      return { active: false };
+    }
     const data = await res.json();
     const fields = data.custom_fields_values || [];
     const botField = fields.find(f => f.field_id === BOT_ACTIVE_FIELD_ID);
     const val = botField?.values?.[0]?.value || '';
-    return val.toUpperCase() === 'SI';
-  } catch {
-    return false;
+    return { active: val.toUpperCase() === 'SI', subdomain, token };
+  } catch (err) {
+    console.error('[kommo] isBotActive error:', err);
+    return { active: false };
   }
 }
 
 /**
- * Pone el campo "botactivo" en NO para que el worker deje de responder a este lead.
- * Se llama cuando el usuario pide hablar con un humano.
+ * Pone botactivo = NO para que el worker deje de responder a este lead.
+ * Acepta auth pre-resuelto para evitar un segundo fetch de token.
  */
-export async function setBotInactive(leadId, env) {
+export async function setBotInactive(leadId, env, auth = {}) {
   if (!leadId) return;
   try {
-    const subdomain = resolveSubdomain(env);
-    const token = await getValidAccessToken(env);
+    const subdomain = auth.subdomain || resolveSubdomain(env);
+    const token = auth.token || await getValidAccessToken(env);
     const res = await fetch(`https://${subdomain}/api/v4/leads/${leadId}`, {
       method: 'PATCH',
       headers: {
@@ -58,20 +58,15 @@ export async function setBotInactive(leadId, env) {
         ],
       }),
     });
-    if (!res.ok) throw new Error(`set botactivo error: ${res.status} ${await res.text()}`);
+    if (!res.ok) throw new Error(`set botactivo error: ${res.status}`);
     console.log(`[kommo] botactivo → NO para lead ${leadId}`);
   } catch (error) {
     console.error('[kommo] Error al desactivar bot:', error);
   }
 }
 
-/**
- * Escribe la respuesta de la IA en el campo personalizado del lead que el
- * Salesbot usa como fuente del mensaje a enviar.
- */
 async function setReplyField(subdomain, token, leadId, message) {
-  const url = `https://${subdomain}/api/v4/leads/${leadId}`;
-  const res = await fetch(url, {
+  const res = await fetch(`https://${subdomain}/api/v4/leads/${leadId}`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -83,19 +78,11 @@ async function setReplyField(subdomain, token, leadId, message) {
       ],
     }),
   });
-
-  if (!res.ok) throw new Error(`set field error: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`set field error: ${res.status}`);
 }
 
-/**
- * Lanza el Salesbot para el lead: POST /api/v4/bots/{id}/run.
- * El Salesbot, ya configurado en Kommo, lee REPLY_FIELD_ID y manda el mensaje
- * al chat usando sus propios permisos internos (no requiere que nuestra
- * integración tenga acceso directo a la Chats API).
- */
 async function runSalesbot(subdomain, token, leadId) {
-  const url = `https://${subdomain}/api/v4/bots/${SALESBOT_ID}/run`;
-  const res = await fetch(url, {
+  const res = await fetch(`https://${subdomain}/api/v4/bots/${SALESBOT_ID}/run`, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -103,28 +90,22 @@ async function runSalesbot(subdomain, token, leadId) {
     },
     body: JSON.stringify({ entity_id: Number(leadId), entity_type: 'leads' }),
   });
-
-  if (!res.ok) throw new Error(`salesbot run error: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`salesbot run error: ${res.status}`);
 }
 
 /**
- * Envía la respuesta de la IA al chat de Kommo vía Salesbot:
- * 1. PATCH /api/v4/leads/{leadId} → escribe el mensaje en el campo kommon8n
- * 2. POST /api/v4/bots/{SALESBOT_ID}/run → dispara el Salesbot que lee ese
- *    campo y manda el mensaje al chat.
- *
- * `leadId` es el `entity_id` del lead que Kommo manda en cada webhook
- * (message[add][0][entity_id]).
+ * Escribe la respuesta en kommon8n y dispara el Salesbot.
+ * Acepta auth pre-resuelto para evitar un segundo fetch de token.
  */
-export async function sendKommoReply(message, leadId, env) {
+export async function sendKommoReply(message, leadId, env, auth = {}) {
   if (!leadId) {
     console.warn('[kommo] Falta leadId. Saltando envío.');
     return { ok: false, error: 'leadId vacío' };
   }
 
   try {
-    const subdomain = resolveSubdomain(env);
-    const token = await getValidAccessToken(env);
+    const subdomain = auth.subdomain || resolveSubdomain(env);
+    const token = auth.token || await getValidAccessToken(env);
 
     await setReplyField(subdomain, token, leadId, message);
     await runSalesbot(subdomain, token, leadId);
