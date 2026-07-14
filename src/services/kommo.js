@@ -2,7 +2,7 @@ import { getValidAccessToken } from './kommoAuth.js';
 import { resolveKommoSubdomain } from '../utils/helpers.js';
 
 const REPLY_FIELD_ID = 1462622;
-const BOT_ACTIVE_FIELD_ID = 650774;
+const BOT_ACTIVE_FIELD_ID = 1463180;
 const SALESBOT_ID = 17570;
 
 /**

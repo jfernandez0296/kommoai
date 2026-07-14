@@ -1,6 +1,6 @@
 import { processUserMessage } from './router.js';
 import { normalizeText, sanitizeInput, resolveKommoSubdomain } from './utils/helpers.js';
-import { sendKommoReply, isBotActive, setBotInactive } from './services/kommo.js';
+import { sendKommoReply } from './services/kommo.js';
 import { exchangeCodeForTokens, getValidAccessToken } from './services/kommoAuth.js';
 
 let LAST_WEBHOOK = null;
@@ -178,41 +178,27 @@ export default {
         return Response.json({ ok: true, skipped: true, reason: 'Mensaje saliente ignorado' }, { headers: corsHeaders });
       }
 
-      // Verificar si el bot está activo para este lead (obtiene auth para reutilizar)
-      if (leadId) {
-        const { active, subdomain, token } = await isBotActive(leadId, env);
-        if (!active) {
-          console.log(`[webhook] Bot inactivo para lead ${leadId}, ignorando mensaje`);
-          return Response.json({ ok: true, skipped: true, reason: 'Bot inactivo' }, { headers: corsHeaders });
-        }
-
-        const message = sanitizeInput(normalizeText(messageText));
-        if (!message) {
-          return Response.json({ ok: true, skipped: true, reason: 'Mensaje vacío' }, { headers: corsHeaders });
-        }
-
-        // Responder 200 a Kommo inmediatamente y procesar en background
-        const auth = { subdomain, token };
-        ctx.waitUntil((async () => {
-          try {
-            const result = await processUserMessage(message, env, ctx);
-            await sendKommoReply(result.reply, leadId, env, auth);
-            if (result.handoff) await setBotInactive(leadId, env, auth);
-          } catch (err) {
-            console.error('[webhook] Error en procesamiento background:', err);
-          }
-        })());
-
-        return Response.json({ ok: true }, { headers: corsHeaders });
-      }
-
-      // Sin leadId: loguear y responder 200 para que Kommo no reintente
       const message = sanitizeInput(normalizeText(messageText));
       if (!message) {
         return Response.json({ ok: true, skipped: true, reason: 'Mensaje vacío' }, { headers: corsHeaders });
       }
-      console.warn('[webhook] No se encontró leadId (entity_id) en el payload');
-      return Response.json({ ok: false, error: 'leadId no encontrado', hint: 'Revisar logs para ver params recibidos' }, { headers: corsHeaders });
+
+      if (!leadId) {
+        console.warn('[webhook] No se encontró leadId (entity_id) en el payload');
+        return Response.json({ ok: false, error: 'leadId no encontrado', hint: 'Revisar logs para ver params recibidos' }, { headers: corsHeaders });
+      }
+
+      // Responder 200 a Kommo inmediatamente y procesar en background
+      ctx.waitUntil((async () => {
+        try {
+          const result = await processUserMessage(message, env, ctx);
+          await sendKommoReply(result.reply, leadId, env);
+        } catch (err) {
+          console.error('[webhook] Error en procesamiento background:', err);
+        }
+      })());
+
+      return Response.json({ ok: true }, { headers: corsHeaders });
     }
 
     // ── Chat directo (para pruebas con JSON): POST /chat ──────────────────

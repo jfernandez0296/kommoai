@@ -340,7 +340,7 @@ describe("Worker chatbot endpoint", () => {
 		globalThis.fetch = vi.fn().mockResolvedValueOnce({
 			ok: true,
 			json: async () => ({
-				custom_fields_values: [{ field_id: 650774, values: [{ value: "NO" }] }],
+				custom_fields_values: [{ field_id: 1463180, values: [{ value: "NO" }] }],
 			}),
 		}) as unknown as typeof fetch;
 
@@ -366,7 +366,7 @@ describe("Worker chatbot endpoint", () => {
 			.mockResolvedValueOnce({
 				ok: true,
 				json: async () => ({
-					custom_fields_values: [{ field_id: 650774, values: [{ value: "SI" }] }],
+					custom_fields_values: [{ field_id: 1463180, values: [{ value: "SI" }] }],
 				}),
 			})
 			// 2. OpenAI → AI response
@@ -414,7 +414,7 @@ describe("Worker chatbot endpoint", () => {
 			.mockResolvedValueOnce({
 				ok: true,
 				json: async () => ({
-					custom_fields_values: [{ field_id: 650774, values: [{ value: "SI" }] }],
+					custom_fields_values: [{ field_id: 1463180, values: [{ value: "SI" }] }],
 				}),
 			})
 			// 2. PATCH lead → set kommon8n (handoff message)
@@ -448,7 +448,7 @@ describe("Worker chatbot endpoint", () => {
 		expect(lastCall[1].method).toBe("PATCH");
 		const body4 = JSON.parse(lastCall[1].body);
 		expect(body4.custom_fields_values[0]).toMatchObject({
-			field_id: 650774,
+			field_id: 1463180,
 			values: [{ value: "NO" }],
 		});
 	});
