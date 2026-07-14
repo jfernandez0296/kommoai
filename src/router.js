@@ -21,7 +21,6 @@ export function shouldHandoff(text) {
     'costo',
     'precio',
     'cuanto cuesta',
-    'informacion',
   ];
 
   const matched = keywords.some((kw) => normalized.includes(removeAccents(kw)));
@@ -63,24 +62,24 @@ export async function processUserMessage(message, env, ctx) {
   const faqMatch = checkFAQ(text);
   if (faqMatch) return faqMatch;
 
-  // 2. Intención de derivación a humano
-  const handoffCheck = shouldHandoff(text);
-  if (handoffCheck.handoff) {
-    return {
-      reply: 'Entendido. Te estoy conectando con un asesor humano para brindarte una atención personalizada. Por favor, aguarda un momento.',
-      handoff: true,
-      imageUrl: null,
-      provider: 'system',
-    };
-  }
-
-  // 3. Pregunta por planes: escribimos "plan" en el campo de Kommo
+  // 2. Pregunta por planes: escribimos "imagen1" en el campo de Kommo
   const normalized = removeAccents(text.toLowerCase());
   if (PLAN_KEYWORDS.some((kw) => normalized.includes(kw))) {
     return {
       reply: 'imagen1',
       handoff: false,
       imageUrl: BUSINESS_DATA.images.planGeneral,
+      provider: 'system',
+    };
+  }
+
+  // 3. Intención de derivación a humano
+  const handoffCheck = shouldHandoff(text);
+  if (handoffCheck.handoff) {
+    return {
+      reply: 'Entendido. Te estoy conectando con un asesor humano para brindarte una atención personalizada. Por favor, aguarda un momento.',
+      handoff: true,
+      imageUrl: null,
       provider: 'system',
     };
   }

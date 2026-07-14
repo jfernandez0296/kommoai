@@ -19,11 +19,12 @@ async function exchangeToken(env, body) {
   return res.json();
 }
 
-async function saveTokens(env, tokens) {
+async function saveTokens(env, tokens, redirectUri) {
   const record = {
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
     expires_at: Date.now() + tokens.expires_in * 1000 - EXPIRY_BUFFER_MS,
+    redirect_uri: redirectUri,
   };
   await env.KOMMO_OAUTH.put(TOKEN_KEY, JSON.stringify(record));
   return record;
@@ -37,7 +38,7 @@ export async function exchangeCodeForTokens(env, code, redirectUri) {
     code,
     redirect_uri: redirectUri,
   });
-  return saveTokens(env, tokens);
+  return saveTokens(env, tokens, redirectUri);
 }
 
 export async function getValidAccessToken(env) {
@@ -57,12 +58,14 @@ export async function getValidAccessToken(env) {
     return record.access_token;
   }
 
+  const redirectUri = record.redirect_uri || `https://${resolveKommoSubdomain(env).replace('.kommo.com', '')}.kommo.com/oauth/callback`;
   const tokens = await exchangeToken(env, {
     client_id: env.KOMMO_INTEGRATION_ID,
     client_secret: env.KOMMO_CLIENT_SECRET,
     grant_type: 'refresh_token',
     refresh_token: record.refresh_token,
+    redirect_uri: redirectUri,
   });
-  const refreshed = await saveTokens(env, tokens);
+  const refreshed = await saveTokens(env, tokens, redirectUri);
   return refreshed.access_token;
 }

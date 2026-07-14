@@ -4,7 +4,7 @@ export function normalizeText(value) {
 
 export function sanitizeInput(text, maxLength = 1000) {
   if (!text) return '';
-  const sanitized = String(text).replace(/<[^>]*>?/gm, '');
+  const sanitized = String(text).replace(/<[^>]*>/gm, '');
   return sanitized.substring(0, maxLength);
 }
 

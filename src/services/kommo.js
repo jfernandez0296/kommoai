@@ -7,9 +7,9 @@ const SALESBOT_ID = 17570;
 
 export async function isBotDisabled(leadId, env) {
   if (!leadId) return false;
+  const subdomain = resolveKommoSubdomain(env);
+  const token = await getValidAccessToken(env); // auth errors propagate to caller
   try {
-    const subdomain = resolveKommoSubdomain(env);
-    const token = await getValidAccessToken(env);
     const res = await fetch(`https://${subdomain}/api/v4/leads/${leadId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -20,7 +20,7 @@ export async function isBotDisabled(leadId, env) {
     const val = botField?.values?.[0]?.value || '';
     return val.toUpperCase() === 'NO';
   } catch {
-    return false;
+    return false; // error de red → permitir bot
   }
 }
 
