@@ -78,7 +78,7 @@ export async function processUserMessage(message, env, ctx) {
   const normalized = removeAccents(text.toLowerCase());
   if (PLAN_KEYWORDS.some((kw) => normalized.includes(kw))) {
     return {
-      reply: 'plan',
+      reply: 'imagen1',
       handoff: false,
       imageUrl: BUSINESS_DATA.images.planGeneral,
       provider: 'system',

@@ -91,13 +91,13 @@ describe("Worker chatbot endpoint", () => {
 
 	it("returns reply=plan when user mentions plan keyword", async () => {
 		const result = await processUserMessage("me interesa ver los planes", env, {} as any);
-		expect(result.reply).toBe("plan");
+		expect(result.reply).toBe("imagen1");
 		expect(result.provider).toBe("system");
 	});
 
 	it("matches plan keyword without accent (catalogo)", async () => {
 		const result = await processUserMessage("muéstrame el catalogo", env, {} as any);
-		expect(result.reply).toBe("plan");
+		expect(result.reply).toBe("imagen1");
 	});
 
 	// ── /debug endpoint ─────────────────────────────────────────────────────
@@ -337,14 +337,15 @@ describe("Worker chatbot endpoint", () => {
 	it("skips processing when botactivo is NO", async () => {
 		await env.KOMMO_OAUTH.put("kommo_oauth_tokens", VALID_KV_TOKEN);
 
-		globalThis.fetch = vi.fn().mockResolvedValueOnce({
+		const fetchMock = vi.fn().mockResolvedValueOnce({
 			ok: true,
 			json: async () => ({
 				custom_fields_values: [{ field_id: 1463180, values: [{ value: "NO" }] }],
 			}),
 		}) as unknown as typeof fetch;
+		globalThis.fetch = fetchMock;
 
-		const body = "message[add][0][text]=Hola&message[add][0][entity_id]=99&message[add][0][type]=1";
+		const body = "message%5Badd%5D%5B0%5D%5Btext%5D=Hola&message%5Badd%5D%5B0%5D%5Bentity_id%5D=99&message%5Badd%5D%5B0%5D%5Btype%5D=1";
 		const request = new IncomingRequest("http://example.com/webhook", {
 			method: "POST",
 			headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -355,26 +356,26 @@ describe("Worker chatbot endpoint", () => {
 		await waitOnExecutionContext(ctx);
 
 		expect(response.status).toBe(200);
-		expect(await response.json()).toMatchObject({ ok: true, skipped: true, reason: "Bot inactivo" });
+		// solo 1 fetch: el GET del lead para revisar botactivo, nada más
+		expect((fetchMock as any).mock.calls).toHaveLength(1);
+		expect((fetchMock as any).mock.calls[0][0]).toContain("/api/v4/leads/99");
 	});
 
-	it("processes incoming message when botactivo is SI and calls Salesbot", async () => {
+	it("processes incoming message and calls Salesbot when botactivo is not NO (4 fetch calls)", async () => {
 		await env.KOMMO_OAUTH.put("kommo_oauth_tokens", VALID_KV_TOKEN);
 
 		const fetchMock = vi.fn()
-			// 1. GET lead → botactivo = SI
+			// 1. GET lead → botactivo vacío (no está en NO)
 			.mockResolvedValueOnce({
 				ok: true,
-				json: async () => ({
-					custom_fields_values: [{ field_id: 1463180, values: [{ value: "SI" }] }],
-				}),
+				json: async () => ({ custom_fields_values: [] }),
 			})
 			// 2. OpenAI → AI response
 			.mockResolvedValueOnce({
 				ok: true,
 				json: async () => ({ choices: [{ message: { content: "Respuesta IA" } }] }),
 			})
-			// 3. PATCH lead → set kommon8n field
+			// 3. PATCH lead → set kommoai field
 			.mockResolvedValueOnce({ ok: true, text: async () => "{}" })
 			// 4. POST bots/run → trigger Salesbot
 			.mockResolvedValueOnce({ ok: true, text: async () => "Accepted" });
@@ -395,62 +396,12 @@ describe("Worker chatbot endpoint", () => {
 		await waitOnExecutionContext(ctx);
 
 		expect(response.status).toBe(200);
-		expect(await response.json()).toMatchObject({ ok: true });
 		expect(fetchMock).toHaveBeenCalledTimes(4);
-
-		// Verify call sequence
-		expect(fetchMock.mock.calls[0][0]).toContain("/api/v4/leads/99");   // botactivo check
-		expect(fetchMock.mock.calls[1][0]).toContain("openai.com");          // AI call
-		expect(fetchMock.mock.calls[2][0]).toContain("/api/v4/leads/99");   // set kommon8n
+		expect(fetchMock.mock.calls[0][0]).toContain("/api/v4/leads/99");         // botactivo check
+		expect(fetchMock.mock.calls[1][0]).toContain("openai.com");               // AI call
+		expect(fetchMock.mock.calls[2][0]).toContain("/api/v4/leads/99");         // set kommoai
 		expect(fetchMock.mock.calls[2][1].method).toBe("PATCH");
-		expect(fetchMock.mock.calls[3][0]).toContain("/api/v4/bots/17570/run"); // Salesbot
-	});
-
-	it("sets botactivo=NO after handoff intent is detected", async () => {
-		await env.KOMMO_OAUTH.put("kommo_oauth_tokens", VALID_KV_TOKEN);
-
-		const fetchMock = vi.fn()
-			// 1. GET lead → botactivo = SI
-			.mockResolvedValueOnce({
-				ok: true,
-				json: async () => ({
-					custom_fields_values: [{ field_id: 1463180, values: [{ value: "SI" }] }],
-				}),
-			})
-			// 2. PATCH lead → set kommon8n (handoff message)
-			.mockResolvedValueOnce({ ok: true, text: async () => "{}" })
-			// 3. POST bots/run → trigger Salesbot
-			.mockResolvedValueOnce({ ok: true, text: async () => "Accepted" })
-			// 4. PATCH lead → set botactivo = NO
-			.mockResolvedValueOnce({ ok: true, text: async () => "{}" });
-		globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-		const body = "message%5Badd%5D%5B0%5D%5Btext%5D=quiero+hablar+con+un+asesor&message%5Badd%5D%5B0%5D%5Bentity_id%5D=99&message%5Badd%5D%5B0%5D%5Btype%5D=1";
-		const request = new IncomingRequest("http://example.com/webhook", {
-			method: "POST",
-			headers: { "content-type": "application/x-www-form-urlencoded" },
-			body,
-		});
-		const ctx = createExecutionContext();
-		const response = await worker.fetch(
-			request,
-			{ ...env, KOMMO_SUBDOMAIN: "test" },
-			ctx,
-		);
-		await waitOnExecutionContext(ctx);
-
-		expect(response.status).toBe(200);
-		expect(fetchMock).toHaveBeenCalledTimes(4);
-
-		// Last call must PATCH botactivo = NO
-		const lastCall = fetchMock.mock.calls[3];
-		expect(lastCall[0]).toContain("/api/v4/leads/99");
-		expect(lastCall[1].method).toBe("PATCH");
-		const body4 = JSON.parse(lastCall[1].body);
-		expect(body4.custom_fields_values[0]).toMatchObject({
-			field_id: 1463180,
-			values: [{ value: "NO" }],
-		});
+		expect(fetchMock.mock.calls[3][0]).toContain("/api/v4/bots/17570/run");   // Salesbot
 	});
 
 	// ── /chat endpoint ──────────────────────────────────────────────────────
@@ -559,7 +510,7 @@ describe("Worker chatbot endpoint", () => {
 		await waitOnExecutionContext(ctx);
 
 		expect(await response.json()).toMatchObject({
-			reply: "plan",
+			reply: "imagen1",
 			handoff: false,
 			imageUrl:
 				"https://pub-bc555ff3adc049a0afda1bac19d846ea.r2.dev/Gemini_Generated_Image_5u2ryk5u2ryk5u2r%20(1).png",

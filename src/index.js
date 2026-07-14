@@ -1,6 +1,6 @@
 import { processUserMessage } from './router.js';
 import { normalizeText, sanitizeInput, resolveKommoSubdomain } from './utils/helpers.js';
-import { sendKommoReply } from './services/kommo.js';
+import { sendKommoReply, isBotDisabled } from './services/kommo.js';
 import { exchangeCodeForTokens, getValidAccessToken } from './services/kommoAuth.js';
 
 let LAST_WEBHOOK = null;
@@ -191,6 +191,10 @@ export default {
       // Responder 200 a Kommo inmediatamente y procesar en background
       ctx.waitUntil((async () => {
         try {
+          if (await isBotDisabled(leadId, env)) {
+            console.log(`[webhook] botactivo=NO para lead ${leadId}, ignorando`);
+            return;
+          }
           const result = await processUserMessage(message, env, ctx);
           await sendKommoReply(result.reply, leadId, env);
         } catch (err) {
