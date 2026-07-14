@@ -25,19 +25,25 @@ export async function isBotDisabled(leadId, env) {
 }
 
 async function setReplyField(subdomain, token, leadId, message) {
+  const body = JSON.stringify({
+    id: Number(leadId),
+    custom_fields_values: [
+      { field_id: REPLY_FIELD_ID, values: [{ value: message }] },
+    ],
+  });
+  console.log(`[kommo] PATCH lead ${leadId} body:`, body);
   const res = await fetch(`https://${subdomain}/api/v4/leads/${leadId}`, {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      custom_fields_values: [
-        { field_id: REPLY_FIELD_ID, values: [{ value: message }] },
-      ],
-    }),
+    body,
   });
-  if (!res.ok) throw new Error(`set field error: ${res.status}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`set field error: ${res.status} — ${errText}`);
+  }
 }
 
 async function runSalesbot(subdomain, token, leadId) {
