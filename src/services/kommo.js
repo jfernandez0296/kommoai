@@ -3,7 +3,7 @@ import { resolveKommoSubdomain } from '../utils/helpers.js';
 
 const REPLY_FIELD_ID = 1462622;
 const BOT_ACTIVE_FIELD_ID = 1463180;
-const SALESBOT_ID = 17570;
+const SALESBOT_ID = 46404;
 
 export async function isBotDisabled(leadId, env) {
   if (!leadId) return false;

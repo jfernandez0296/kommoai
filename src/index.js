@@ -128,6 +128,22 @@ export default {
       }
     }
 
+    // ── Listar Salesbots: GET /kommo-bots-test ────────────────────────────
+    if (request.method === 'GET' && url.pathname === '/kommo-bots-test') {
+      try {
+        const subdomain = resolveKommoSubdomain(env);
+        const token = await getValidAccessToken(env);
+        const res = await fetch(`https://${subdomain}/api/v4/bots?limit=50`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const body = res.ok ? await res.json() : await res.text();
+        const bots = body?._embedded?.bots?.map(b => ({ id: b.id, name: b.name, is_active: b.is_active })) || body;
+        return Response.json({ status: res.status, bots }, { headers: corsHeaders });
+      } catch (error) {
+        return Response.json({ success: false, error: String(error) }, { status: 500, headers: corsHeaders });
+      }
+    }
+
     // ── Test conexión Kommo: GET /kommo-test ───────────────────────────────
     if (request.method === 'GET' && url.pathname === '/kommo-test') {
       try {
@@ -168,13 +184,14 @@ export default {
                           params.get('message[0][text]') || '';
       const leadId = params.get('message[add][0][entity_id]') ||
                      params.get('message[add][0][element_id]') || '';
+      const chatId = params.get('message[add][0][chat_id]') || '';
       const direction = params.get('message[add][0][type]') || '';
 
-      console.log(`messageText: "${messageText}", leadId: "${leadId}", direction: "${direction}"`);
+      console.log(`messageText: "${messageText}", leadId: "${leadId}", chatId: "${chatId}", direction: "${direction}"`);
       console.log('Todos los params:', [...params.entries()].map(([k, v]) => `${k}=${v}`).join(' | '));
 
       // Ignorar mensajes salientes para evitar loop
-      if (direction === '2') {
+      if (direction === 'outgoing' || direction === '2') {
         return Response.json({ ok: true, skipped: true, reason: 'Mensaje saliente ignorado' }, { headers: corsHeaders });
       }
 
@@ -196,7 +213,7 @@ export default {
             return;
           }
           const result = await processUserMessage(message, env, ctx);
-          await sendKommoReply(result.reply, leadId, env);
+          await sendKommoReply(result.reply, leadId, chatId, env);
         } catch (err) {
           console.error('[webhook] Error en procesamiento background:', err);
         }

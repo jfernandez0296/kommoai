@@ -290,7 +290,7 @@ describe("Worker chatbot endpoint", () => {
 		expect(JSON.parse(fieldInit.body).custom_fields_values[0].field_id).toBe(1462622);
 
 		const [botUrl, botInit] = fetchMock.mock.calls[1];
-		expect(botUrl).toBe("https://d.kommo.com/api/v4/bots/17570/run");
+		expect(botUrl).toBe("https://d.kommo.com/api/v4/bots/46404/run");
 		expect(JSON.parse(botInit.body)).toMatchObject({ entity_id: 12345, entity_type: "leads" });
 	});
 
@@ -401,7 +401,7 @@ describe("Worker chatbot endpoint", () => {
 		expect(fetchMock.mock.calls[1][0]).toContain("openai.com");               // AI call
 		expect(fetchMock.mock.calls[2][0]).toContain("/api/v4/leads/99");         // set kommoai
 		expect(fetchMock.mock.calls[2][1].method).toBe("PATCH");
-		expect(fetchMock.mock.calls[3][0]).toContain("/api/v4/bots/17570/run");   // Salesbot
+		expect(fetchMock.mock.calls[3][0]).toContain("/api/v4/bots/46404/run");   // Salesbot
 	});
 
 	// ── /chat endpoint ──────────────────────────────────────────────────────
