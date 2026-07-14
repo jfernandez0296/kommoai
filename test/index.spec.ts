@@ -287,6 +287,7 @@ describe("Worker chatbot endpoint", () => {
 		const [fieldUrl, fieldInit] = fetchMock.mock.calls[0];
 		expect(fieldUrl).toBe("https://d.kommo.com/api/v4/leads/12345");
 		expect(fieldInit.method).toBe("PATCH");
+		expect(JSON.parse(fieldInit.body).custom_fields_values[0].field_id).toBe(1462622);
 
 		const [botUrl, botInit] = fetchMock.mock.calls[1];
 		expect(botUrl).toBe("https://d.kommo.com/api/v4/bots/17570/run");
